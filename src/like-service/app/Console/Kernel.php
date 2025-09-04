@@ -35,7 +35,23 @@ class Kernel extends ConsoleKernel
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
      * @return void
      */
-    protected function schedule(Schedule $schedule) {}
+    protected function schedule(Schedule $schedule)
+    {
+        // Schedule agent to run every minute for demonstration
+        $schedule->command('agent:run --task=monitor')
+                 ->everyMinute()
+                 ->description('Monitor system health every minute');
+        
+        // Schedule cleanup task every 5 minutes
+        $schedule->command('agent:run --task=cleanup')
+                 ->everyFiveMinutes()
+                 ->description('Cleanup operations every 5 minutes');
+        
+        // Schedule backup task every hour
+        $schedule->command('agent:run --task=backup')
+                 ->hourly()
+                 ->description('Backup operations every hour');
+    }
 
     /**
      * Register the commands for the application.

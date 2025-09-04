@@ -32,7 +32,11 @@ use Illuminate\Http\Request;
 
 include (__DIR__ . '/../app/Http/Controllers/LikeController.php');
 
+// Agent routes for HTTP triggering
+Route::get('/agent/status', [App\Http\Controllers\AgentController::class, 'status']);
+Route::post('/agent/trigger', [App\Http\Controllers\AgentController::class, 'trigger']);
 
+// Existing like routes
 Route::get('/like', function (Request $request){
     return LikeController::getLikeCountsAndStates($request);
 });
