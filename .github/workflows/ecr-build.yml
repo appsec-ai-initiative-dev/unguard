@@ -1,4 +1,9 @@
+
 name: Build and Push Docker Images to ECR
+
+permissions:
+  id-token: write
+  contents: read
 
 on:
   push:
@@ -9,9 +14,7 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-      ECR_REPOSITORY: ${{ secrets.AWS_ECR_ROLE_ARN }}
+  # No need to set AWS_REGION and ECR_REPOSITORY as env variables for OIDC; use secrets directly in steps
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,14 +22,17 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ env.AWS_REGION }}
-          role-to-assume: ${{ env.ECR_REPOSITORY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ECR_ROLE_ARN }}
+          role-session-name: GitHubActions
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build, tag, and push Docker images
+        env:
+          ECR_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
         run: |
           IMAGE_TAG=latest
           for dockerfile in $(find ./src -name Dockerfile); do
