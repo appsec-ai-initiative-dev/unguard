@@ -92,10 +92,9 @@ jobs:
           CHART_VERSION: ${{ env.CHART_VERSION }}
         run: |
           set -e
-          echo "Attempt push to owner namespace: oci://ghcr.io/${{ github.repository_owner }}"
-          if helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}; then
-            echo "Pushed using owner namespace"
-          else
-            echo "Owner namespace push failed, attempting full repo path: oci://ghcr.io/${{ github.repository }}"
-            helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository }}
-          fi
+          ORG_RAW='${{ github.repository_owner }}'
+          ORG_LC=$(echo "$ORG_RAW" | tr '[:upper:]' '[:lower:]')
+          echo "Original owner: $ORG_RAW  Lowercased: $ORG_LC"
+          echo "Chart package: unguard-${CHART_VERSION}.tgz"
+          echo "Push target: oci://ghcr.io/${ORG_LC}"
+          helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${ORG_LC}
