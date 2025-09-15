@@ -6,6 +6,6 @@ LABEL org.opencontainers.image.source="https://github.com/AppSec-AI-Initiative-D
 LABEL org.opencontainers.image.description="Aggregate placeholder image for unguard demo stack"
 
 # Provide a minimal index page
-RUN echo '<html><head><title>unguard</title></head><body><h1>unguard</h1><p>Composite microservices demo - see Helm chart for services.</p></body></html>' > /usr/share/nginx/html/index.html
+RUN echo '<html><head><title>unguard</title></head><body><h1>unguard</h1><p>Composite microservices demo for AppSec - see Helm chart for services.</p></body></html>' > /usr/share/nginx/html/index.html
 
 EXPOSE 80
