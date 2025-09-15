@@ -52,12 +52,18 @@ jobs:
       - name: Log in to GHCR
         run: echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Update chart version/appVersion
+      - name: Prepare Helm chart metadata
         run: |
-          yq -i ".version=\"${IMAGE_TAG}\" | .appVersion=\"${IMAGE_TAG}\"" chart/Chart.yaml
+          BASE_VERSION=$(yq '.version' chart/Chart.yaml)
+          PRERELEASE_VERSION="${BASE_VERSION}-${IMAGE_TAG}"
+          APP_VERSION="${BASE_VERSION}+${IMAGE_TAG}"
+          yq -i ".version=\"${PRERELEASE_VERSION}\" | .appVersion=\"${APP_VERSION}\"" chart/Chart.yaml
+          echo "CHART_VERSION=${PRERELEASE_VERSION}" >> $GITHUB_ENV
       - name: Package Helm chart
         run: helm package chart
 
       - name: Push Helm chart to GHCR
+        env:
+          CHART_VERSION: ${{ env.CHART_VERSION }}
         run: |
-          helm push unguard-${IMAGE_TAG}.tgz oci://ghcr.io/${{ github.repository_owner }}/unguard/chart
+          helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/unguard/chart
