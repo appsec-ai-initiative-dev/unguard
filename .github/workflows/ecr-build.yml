@@ -78,9 +78,24 @@ jobs:
       - name: Package Helm chart
         run: helm package chart
 
+      - name: Debug chart push context
+        run: |
+          echo "github.repository_owner=${{ github.repository_owner }}"
+          echo "github.repository=${{ github.repository }}"
+          echo "IMAGE_TAG=${IMAGE_TAG}"
+          echo "CHART_VERSION=${CHART_VERSION}"
+          echo "Chart.yaml:" && cat chart/Chart.yaml
+          ls -1 unguard-*.tgz || echo "No packaged chart found"
+
       - name: Push Helm chart to GHCR
         env:
           CHART_VERSION: ${{ env.CHART_VERSION }}
         run: |
-          # Push chart to ghcr.io/<owner>/<repo> (chart name comes from the package filename)
-          helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository }}
+          set -e
+          echo "Attempt push to owner namespace: oci://ghcr.io/${{ github.repository_owner }}"
+          if helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}; then
+            echo "Pushed using owner namespace"
+          else
+            echo "Owner namespace push failed, attempting full repo path: oci://ghcr.io/${{ github.repository }}"
+            helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository }}
+          fi
