@@ -34,16 +34,32 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push Docker images
+      - name: Build, tag, and push Docker images (skip if exists)
         env:
           ECR_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
+          # Build umbrella unguard image (root Dockerfile) first
+          if [ -f Dockerfile ]; then
+            UMBRELLA_IMAGE="${ECR_REPOSITORY}:unguard-${IMAGE_TAG}"
+            if aws ecr describe-images --repository-name "$(echo $ECR_REPOSITORY | awk -F/ '{print $2}')" --image-ids imageTag="unguard-${IMAGE_TAG}" >/dev/null 2>&1; then
+              echo "Umbrella image unguard-${IMAGE_TAG} already exists, skipping build."
+            else
+              docker build -t "$UMBRELLA_IMAGE" -f Dockerfile .
+              docker push "$UMBRELLA_IMAGE"
+            fi
+          fi
+
           for dockerfile in $(find ./src -name Dockerfile); do
             SERVICE=$(basename $(dirname $dockerfile))
             IMAGE_URI="${ECR_REPOSITORY}:${SERVICE}-${IMAGE_TAG}"
-            docker build -t $IMAGE_URI -f $dockerfile $(dirname $dockerfile)
-            docker push $IMAGE_URI
+            REPO_NAME=$(echo $ECR_REPOSITORY | awk -F/ '{print $2}')
+            if aws ecr describe-images --repository-name "$REPO_NAME" --image-ids imageTag="${SERVICE}-${IMAGE_TAG}" >/dev/null 2>&1; then
+              echo "Image ${SERVICE}-${IMAGE_TAG} already exists, skipping build."
+            else
+              docker build -t $IMAGE_URI -f $dockerfile $(dirname $dockerfile)
+              docker push $IMAGE_URI
+            fi
           done
 
       - name: Set up Helm
@@ -66,4 +82,5 @@ jobs:
         env:
           CHART_VERSION: ${{ env.CHART_VERSION }}
         run: |
-          helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/unguard/chart
+          # OCI Helm push path is oci://ghcr.io/<owner>/<repo>
+          helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/unguard
