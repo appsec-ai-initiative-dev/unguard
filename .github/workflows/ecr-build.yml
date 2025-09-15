@@ -82,5 +82,5 @@ jobs:
         env:
           CHART_VERSION: ${{ env.CHART_VERSION }}
         run: |
-          # OCI Helm push path is oci://ghcr.io/<owner>/<repo>
-          helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/unguard
+          # Push chart to ghcr.io/<owner>/<repo> (chart name comes from the package filename)
+          helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository }}
