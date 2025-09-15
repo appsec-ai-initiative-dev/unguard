@@ -66,7 +66,17 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Log in to GHCR
-        run: echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        run: |
+          set -e
+          if [ -n "$GHCR_PAT" ]; then
+            echo "Using GHCR_PAT secret for login";
+            echo "$GHCR_PAT" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          else
+            echo "Using default GITHUB_TOKEN for login";
+            echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          fi
 
       - name: Prepare Helm chart metadata
         run: |
@@ -75,6 +85,14 @@ jobs:
           APP_VERSION="${BASE_VERSION}+${IMAGE_TAG}"
           yq -i ".version=\"${PRERELEASE_VERSION}\" | .appVersion=\"${APP_VERSION}\"" chart/Chart.yaml
           echo "CHART_VERSION=${PRERELEASE_VERSION}" >> $GITHUB_ENV
+          # Determine GHCR namespace
+          if [ -n "${{ secrets.GHCR_NAMESPACE }}" ]; then
+            NS_RAW='${{ secrets.GHCR_NAMESPACE }}'
+          else
+            NS_RAW='${{ github.repository }}'
+          fi
+          NS_LC=$(echo "$NS_RAW" | tr '[:upper:]' '[:lower:]')
+          echo "GHCR_PUSH_NAMESPACE=$NS_LC" >> $GITHUB_ENV
       - name: Package Helm chart
         run: helm package chart
 
@@ -90,11 +108,11 @@ jobs:
       - name: Push Helm chart to GHCR
         env:
           CHART_VERSION: ${{ env.CHART_VERSION }}
+          GHCR_PUSH_NAMESPACE: ${{ env.GHCR_PUSH_NAMESPACE }}
         run: |
           set -e
-          ORG_RAW='${{ github.repository_owner }}'
-          ORG_LC=$(echo "$ORG_RAW" | tr '[:upper:]' '[:lower:]')
-          echo "Original owner: $ORG_RAW  Lowercased: $ORG_LC"
+          echo "GHCR namespace: $GHCR_PUSH_NAMESPACE"
+          ORG_LC="$GHCR_PUSH_NAMESPACE"
           echo "Chart package: unguard-${CHART_VERSION}.tgz"
           echo "Push target: oci://ghcr.io/${ORG_LC}"
           helm push unguard-${CHART_VERSION}.tgz oci://ghcr.io/${ORG_LC}
