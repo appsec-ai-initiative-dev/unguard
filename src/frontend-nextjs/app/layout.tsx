@@ -46,6 +46,7 @@ export default function RootLayout({ children }: PropsWithChildren) {
                             {children}
                         </main>
                         <hr />
+                        <p>This text is a test :)</p>
                         <footer className='w-full flex items-center justify-center py-3 text-center'>
                             <Footer />
                         </footer>
