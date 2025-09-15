@@ -4,6 +4,7 @@ name: Build and Push Docker Images to ECR
 permissions:
   id-token: write
   contents: read
+  packages: write
 
 on:
   push:
@@ -19,6 +20,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Derive short SHA image tag
+        run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -33,11 +37,27 @@ jobs:
       - name: Build, tag, and push Docker images
         env:
           ECR_REPOSITORY: ${{ secrets.AWS_ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
-          IMAGE_TAG=latest
           for dockerfile in $(find ./src -name Dockerfile); do
             SERVICE=$(basename $(dirname $dockerfile))
             IMAGE_URI="${ECR_REPOSITORY}:${SERVICE}-${IMAGE_TAG}"
             docker build -t $IMAGE_URI -f $dockerfile $(dirname $dockerfile)
             docker push $IMAGE_URI
           done
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR
+        run: echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Update chart version/appVersion
+        run: |
+          yq -i ".version=\"${IMAGE_TAG}\" | .appVersion=\"${IMAGE_TAG}\"" chart/Chart.yaml
+      - name: Package Helm chart
+        run: helm package chart
+
+      - name: Push Helm chart to GHCR
+        run: |
+          helm push unguard-${IMAGE_TAG}.tgz oci://ghcr.io/${{ github.repository_owner }}/unguard/chart
