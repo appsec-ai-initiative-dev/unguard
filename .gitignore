@@ -259,3 +259,4 @@ node_modules
 **/charts/*.tgz
 
 
+src/user-auth-service/package-lock.json
