@@ -1,0 +1,62 @@
+name: Build and Push Docker Images to GHCR
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Derive short SHA image tag
+        run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build, tag, and push Docker images to GHCR
+        env:
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        run: |
+          # Determine GHCR namespace
+          if [ -n "${{ secrets.GHCR_NAMESPACE }}" ]; then
+            GHCR_NAMESPACE='${{ secrets.GHCR_NAMESPACE }}'
+          else
+            GHCR_NAMESPACE='${{ github.repository }}'
+          fi
+          GHCR_NAMESPACE_LC=$(echo "$GHCR_NAMESPACE" | tr '[:upper:]' '[:lower:]')
+          
+          # Build umbrella unguard image (root Dockerfile) first
+          if [ -f Dockerfile ]; then
+            UMBRELLA_GHCR_IMAGE="ghcr.io/${GHCR_NAMESPACE_LC}/unguard:${IMAGE_TAG}"
+            
+            echo "Building and pushing umbrella image: $UMBRELLA_GHCR_IMAGE"
+            docker build -t "$UMBRELLA_GHCR_IMAGE" -f Dockerfile .
+            docker push "$UMBRELLA_GHCR_IMAGE"
+            echo "Built and pushed umbrella image: $UMBRELLA_GHCR_IMAGE"
+          fi
+
+          # Build and push individual service images
+          for dockerfile in $(find ./src -name Dockerfile); do
+            SERVICE=$(basename $(dirname $dockerfile))
+            GHCR_IMAGE_URI="ghcr.io/${GHCR_NAMESPACE_LC}/unguard-${SERVICE}:${IMAGE_TAG}"
+            
+            echo "Building and pushing service image: $GHCR_IMAGE_URI"
+            docker build -t $GHCR_IMAGE_URI -f $dockerfile $(dirname $dockerfile)
+            docker push $GHCR_IMAGE_URI
+            echo "Built and pushed service image: $GHCR_IMAGE_URI"
+          done
