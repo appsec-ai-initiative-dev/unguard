@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-client-config
+  namespace: unguard
+data:
+  MCP_SERVER_URL: "https://your-tenant.dynatrace.com/api/v2/mcp"
+  MCP_ENVIRONMENT_ID: "your-environment-id"
+  MCP_CONNECTION_TIMEOUT: "30"
+  SERVER_PORT: "8090"
+  SERVER_HOST: "0.0.0.0"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mcp-client-secret
+  namespace: unguard
+type: Opaque
+data:
+  # Base64 encoded API token (replace with actual token)
+  MCP_API_TOKEN: ZGVtby10b2tlbi0xMjM0NQ==  # demo-token-12345
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-client-service
+  namespace: unguard
+  labels:
+    app: mcp-client-service
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-client-service
+  template:
+    metadata:
+      labels:
+        app: mcp-client-service
+        version: v1
+    spec:
+      containers:
+      - name: mcp-client-service
+        image: ghcr.io/dynatrace-oss/unguard/mcp-client-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8090
+          name: http
+        env:
+        - name: MCP_SERVER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-client-config
+              key: MCP_SERVER_URL
+        - name: MCP_ENVIRONMENT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-client-config
+              key: MCP_ENVIRONMENT_ID
+        - name: MCP_CONNECTION_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-client-config
+              key: MCP_CONNECTION_TIMEOUT
+        - name: SERVER_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-client-config
+              key: SERVER_PORT
+        - name: SERVER_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: mcp-client-config
+              key: SERVER_HOST
+        - name: MCP_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: mcp-client-secret
+              key: MCP_API_TOKEN
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8090
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-client-service
+  namespace: unguard
+  labels:
+    app: mcp-client-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8090
+    targetPort: 8090
+    protocol: TCP
+    name: http
+  selector:
+    app: mcp-client-service
