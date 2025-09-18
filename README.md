@@ -69,6 +69,30 @@ To quickly get started with Unguard, install the Unguard Helm chart using the [H
 
 To customize your Unguard chart installation, see the [chart README](chart/README.md)
 
+## 🐳 Container Images
+
+Unguard provides pre-built Docker images available on GitHub Container Registry (GHCR):
+
+* **Umbrella Image**: `ghcr.io/appsec-ai-initiative-dev/unguard:latest` - A simple landing page
+* **Service Images**: `ghcr.io/appsec-ai-initiative-dev/unguard-{service}:latest` - Individual microservice images
+
+Each service has its own container image:
+- `unguard-frontend-nextjs` - Next.js frontend
+- `unguard-microblog-service` - Java Spring microblog API
+- `unguard-proxy-service` - Java Spring proxy API
+- `unguard-profile-service` - Java Spring profile API
+- `unguard-membership-service` - .NET membership API
+- `unguard-like-service` - PHP likes API
+- `unguard-user-auth-service` - Node.js authentication API
+- `unguard-status-service` - Go status API
+- `unguard-payment-service` - Python Flask payment API
+- `unguard-ad-service` - .NET ad service
+- `unguard-user-simulator` - Node.js load generator
+- `unguard-malicious-load-generator` - Attack simulation
+- `unguard-envoy-proxy` - Envoy reverse proxy
+
+Images are automatically built and published on every commit to the main branch.
+
 
 ## 🖥️ Local Development
 
