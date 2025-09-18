@@ -1,0 +1,108 @@
+name: Dependabot High/Critical -> Assign to Copilot
+
+on:
+  repository_vulnerability_alert:
+    types: [create]
+
+permissions:
+  contents: read
+  issues: write
+  security-events: read
+
+jobs:
+  triage-high-critical:
+    if: >-
+      ${{
+        (github.event.alert.severity == 'high' || github.event.alert.severity == 'critical') ||
+        (github.event.security_advisory && (github.event.security_advisory.severity == 'high' || github.event.security_advisory.severity == 'critical'))
+      }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create and assign issue to Copilot
+        id: create_issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const alert = context.payload.alert || {};
+            const advisory = context.payload.security_advisory || {};
+            const vuln = context.payload.security_vulnerability || {};
+
+            const ghsa = alert.ghsa_id
+              || advisory.ghsa_id
+              || (advisory.identifiers || []).find(i => i.type === 'GHSA')?.value
+              || 'N/A';
+            const cves = (advisory.identifiers || [])
+              .filter(i => i.type === 'CVE')
+              .map(i => i.value);
+
+            const severity = (alert.severity || advisory.severity || 'unknown').toLowerCase();
+            const pkg = alert.affected_package_name
+              || vuln.package?.name
+              || alert.package?.name
+              || 'dependency';
+            const ecosystem = alert.affected_package_ecosystem
+              || vuln.package?.ecosystem
+              || alert.package?.ecosystem
+              || 'N/A';
+            const affected = alert.affected_range
+              || vuln.vulnerable_version_range
+              || alert.vulnerable_requirements
+              || 'N/A';
+            const fixedIn = alert.fix_version
+              || vuln.first_patched_version?.identifier
+              || 'N/A';
+            const manifest = alert.vulnerable_manifest_path
+              || alert.dependency?.manifest_path
+              || 'N/A';
+
+            const alertNumber = alert.number || alert.id;
+            const alertUrl = alertNumber
+              ? `https://github.com/${context.repo.owner}/${context.repo.repo}/security/dependabot/${alertNumber}`
+              : 'N/A';
+
+            const title = `Dependabot ${severity.toUpperCase()}: ${ghsa} in ${pkg}`;
+            const body = [
+              'This issue was created automatically for High/Critical Dependabot alerts and assigned to the Copilot Coding Agent for verification.',
+              '',
+              'Dependabot alert details',
+              `- Alert URL: ${alertUrl}`,
+              `- Package: ${pkg} (${ecosystem})`,
+              `- Affected versions: ${affected}`,
+              `- Fixed in: ${fixedIn}`,
+              `- GHSA: ${ghsa}`,
+              `- CVEs: ${cves.length ? cves.join(', ') : 'N/A'}`,
+              `- Manifest path: ${manifest}`
+            ].join('\n');
+
+            let issue;
+            try {
+              issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['security', 'dependabot', severity, 'verification:pending'],
+                assignees: ['copilot']
+              });
+            } catch (e) {
+              if (e.status === 422) {
+                issue = await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                  labels: ['security', 'dependabot', severity, 'verification:pending', 'copilot-assignment-failed']
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.data.number,
+                  body: 'Automatic assignment to @copilot failed. Ensure the Copilot Coding Agent is enabled for this repo and is assignable.'
+                });
+              } else {
+                throw e;
+              }
+            }
+
+            core.setOutput('issue_number', issue.data.number);
