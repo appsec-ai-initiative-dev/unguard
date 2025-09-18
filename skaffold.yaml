@@ -47,6 +47,8 @@ build:
       context: src/payment-service
     - image: unguard-exploit-toolkit
       context: exploit-toolkit
+    - image: unguard-mcp-connection-test
+      context: src/mcp-connection-test
 
   local:
     # only the docker CLI respects a manually logged-in daemon

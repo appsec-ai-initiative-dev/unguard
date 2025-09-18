@@ -1,0 +1,10 @@
+{
+  "name": "mcp-connection-test",
+  "version": "1.0.0",
+  "description": "Microservice Communication Protocol (MCP) connection test for Unguard services",
+  "main": "test-connections.js",
+  "scripts": {
+    "test": "node test-connections.js"
+  },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unguard-mcp-connection-test
+  labels:
+    app.kubernetes.io/name: unguard-mcp-connection-test
+    app.kubernetes.io/part-of: unguard
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: mcp-connection-test
+      image: unguard-mcp-connection-test:latest
+      imagePullPolicy: IfNotPresent
+      env:
+        # Service addresses (using the same pattern as other services)
+        - name: FRONTEND_ADDRESS
+          value: "unguard-frontend-nextjs"
+        - name: STATUS_SERVICE_ADDRESS
+          value: "unguard-status-service"
+        - name: PROFILE_SERVICE_ADDRESS
+          value: "unguard-profile-service"
+        - name: MICROBLOG_SERVICE_ADDRESS
+          value: "unguard-microblog-service"
+        - name: USER_AUTH_SERVICE_ADDRESS
+          value: "unguard-user-auth-service"
+        - name: MEMBERSHIP_SERVICE_ADDRESS
+          value: "unguard-membership-service"
+        - name: LIKE_SERVICE_ADDRESS
+          value: "unguard-like-service"
+        - name: PAYMENT_SERVICE_ADDRESS
+          value: "unguard-payment-service"
+        - name: PROXY_SERVICE_ADDRESS
+          value: "unguard-proxy-service"
+        - name: AD_SERVICE_ADDRESS
+          value: "unguard-ad-service"
+        # Base paths
+        - name: STATUS_SERVICE_BASE_PATH
+          value: "/status-service"
+        - name: MEMBERSHIP_SERVICE_BASE_PATH
+          value: "/membership-service"
+        - name: LIKE_SERVICE_BASE_PATH
+          value: "/like-service"
+        - name: AD_SERVICE_BASE_PATH
+          value: "/ad-service"
+      command: ["npm", "test"]
+  restartPolicy: Never
