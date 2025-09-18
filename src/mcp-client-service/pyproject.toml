@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "mcp-client-service"
+version = "0.1.0"
+description = "Dynatrace MCP Client Service for AI-driven observability insights"
+authors = ["Dynatrace LLC <info@dynatrace.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+flask = "^2.3.0"
+requests = "^2.31.0"
+websockets = "^11.0.3"
+pydantic = "^2.5.0"
+opentelemetry-distro = "^0.46b0"
+opentelemetry-exporter-jaeger = "^1.21.0"
+opentelemetry-propagator-jaeger = "^1.25.0"
+opentelemetry-exporter-otlp-proto-grpc = "^1.25.0"
+opentelemetry-exporter-otlp-proto-http = "^1.25.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
