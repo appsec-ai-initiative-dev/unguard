@@ -5,6 +5,8 @@
 Configuration for the unguard managment zone is at [`monaco/management-zone`](../monaco/management-zone/management-zone.yaml).
 For setup, read the [official Monaco docs](https://dynatrace-oss.github.io/dynatrace-monitoring-as-code/).
 
+For DQL query examples and explanations for security monitoring, see [DQL Security Query Explanation](DQL-SECURITY-QUERY-EXPLANATION.md).
+
 ## ❓ FAQ
 
 **Why is Unguard not recognized by Dynatrace anymore?**

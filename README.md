@@ -95,6 +95,7 @@ See the Unguard Chart [README](chart/README.md) on how to install Unguard in you
 
 * **Tracing and Jaeger**: [See these instructions](docs/TRACING.md)
 * **Malicious Load Generator**: [See these instructions](src/malicious-load-generator/README.md)
+* **DQL Security Queries**: [See query explanations](docs/DQL-SECURITY-QUERY-EXPLANATION.md)
 
 ---
 
