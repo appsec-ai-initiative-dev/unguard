@@ -42,12 +42,30 @@ fetch security.events
 | S-224 | SpringBoot org.dynatrace.ssrfservice.Application unguard-proxy-service-* | 7.5 | High |
 | S-205 | SpringBoot org.dynatrace.ssrfservice.Application unguard-proxy-service-* | 7.5 | High |
 
+### 🚨 CRITICAL FINDING: Additional Vulnerability Scan
+
+**Extended Query Results (10 vulnerabilities in proxy service):**
+| Vulnerability ID | CVSS Score | Risk Level |
+|------------------|------------|------------|
+| **S-42** | **9.2** | **🔴 CRITICAL** |
+| S-23 | 8.7 | High |
+| S-150 | 7.4 | High |
+| S-15 | 5.9 | Medium |
+| S-219 | 5.6 | Medium |
+| S-235 | 5.3 | Medium |
+| S-234 | 5.3 | Medium |
+| S-174 | 4.8 | Medium |
+| S-231 | 3.7 | Low |
+| S-166 | 2.6 | Low |
+
 ## 📊 3. Analysis Summary
 
 ### Key Findings:
 - **Environment**: Unguard proxy service is actively monitored
-- **Vulnerabilities Detected**: Multiple security issues identified
-- **Severity Range**: Medium (4.3) to High (7.8) CVSS scores
+- **🚨 CRITICAL VULNERABILITY**: S-42 with CVSS score 9.2 detected
+- **Total Vulnerabilities**: 10+ security issues identified in proxy service
+- **Severity Range**: Low (2.6) to Critical (9.2) CVSS scores
+- **High Risk Count**: 3 vulnerabilities with CVSS >= 7.0
 - **Affected Component**: SpringBoot proxy service application
 - **Detection Status**: Active vulnerability monitoring operational
 
@@ -120,11 +138,12 @@ The following aspects of MCP integration have been verified:
 
 Based on the verification results:
 
-1. **Active Vulnerabilities**: 5+ vulnerabilities detected in proxy service
-2. **Priority Action**: Focus on High severity vulnerabilities (S-129, S-224, S-205)
-3. **Continuous Monitoring**: Implement regular vulnerability sweeps
-4. **Remediation Tracking**: Monitor resolution status changes
-5. **Function Usage Analysis**: Prioritize vulnerabilities with active function usage
+1. **🚨 CRITICAL PRIORITY**: Address S-42 vulnerability (CVSS 9.2) immediately
+2. **High Priority**: Focus on S-23 (8.7) and S-150 (7.4) vulnerabilities  
+3. **Active Vulnerabilities**: 10+ vulnerabilities detected in proxy service
+4. **Continuous Monitoring**: Implement regular vulnerability sweeps
+5. **Remediation Tracking**: Monitor resolution status changes
+6. **Function Usage Analysis**: Prioritize vulnerabilities with active function usage
 
 ## 🎯 8. Next Steps
 
