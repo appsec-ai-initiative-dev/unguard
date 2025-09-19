@@ -2,11 +2,11 @@ name: Dependabot High/Critical -> Assign to Copilot (Scheduled)
 
 on:
   schedule:
-    # Every 30 minutes; adjust as needed
     - cron: "*/30 * * * *"
-  # Optional: allow manual runs for testing
   workflow_dispatch: {}
 
+# Note: This 'permissions' block only affects the default GITHUB_TOKEN, not your App token.
+# It's fine to keep minimal; your App token governs its own permissions.
 permissions:
   contents: read
   issues: write
@@ -20,103 +20,125 @@ jobs:
   triage-high-critical:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.AI_APP_ID }}
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+          # Ensure the app is installed on this repository
+          owner: AppSec-AI-Initiative-Dev
+          repositories: |
+            unguard
+
       - name: Fetch Dependabot alerts and create issues
         uses: actions/github-script@v7
         with:
+          github-token: ${{ steps['app-token'].outputs.token }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // Paginate Dependabot alerts with filters
-            const perPage = 100;
-            let page = 1;
-            let alerts = [];
-            for (;;) {
-              const res = await github.rest.dependabot.listAlertsForRepo({
-                owner,
-                repo,
-                state: 'open',
-                severity: 'high,critical',
-                per_page: perPage,
-                page
-              });
-              alerts = alerts.concat(res.data);
-              if (res.data.length < perPage) break;
-              page++;
+            async function listAlerts() {
+              try {
+                const perPage = 100;
+                let page = 1;
+                let all = [];
+                for (;;) {
+                  const res = await github.request("GET /repos/{owner}/{repo}/dependabot/alerts", {
+                    owner,
+                    repo,
+                    state: "open",
+                    severity: "high,critical",
+                    per_page: perPage,
+                    page
+                  });
+                  all = all.concat(res.data);
+                  if (res.data.length < perPage) break;
+                  page++;
+                }
+                return all;
+              } catch (e) {
+                core.error(`Failed to list Dependabot alerts: ${e.status || ""} ${e.message}`);
+                if (e.response?.headers) core.info(`Response headers: ${JSON.stringify(e.response.headers)}`);
+                if (e.response?.data) core.info(`Response body: ${JSON.stringify(e.response.data)}`);
+                throw e;
+              }
             }
 
+            async function issueExists(marker) {
+              try {
+                const q = `repo:${owner}/${repo} is:issue in:body "${marker}"`;
+                const res = await github.rest.search.issuesAndPullRequests({ q });
+                return res.data.total_count > 0;
+              } catch (e) {
+                core.warning(`Search API failed, proceeding without dedupe: ${e.status || ""} ${e.message}`);
+                return false;
+              }
+            }
+
+            const alerts = await listAlerts();
             if (!alerts.length) {
-              core.info('No open High/Critical Dependabot alerts found.');
+              core.info("No open High/Critical Dependabot alerts found.");
               return;
             }
 
             for (const alert of alerts) {
               const alertId = alert.number || alert.id;
               const marker = `dependabot-alert-id: ${alertId}`;
-
-              // Check if we already created an issue for this alert using a unique marker in the body
-              const q = `repo:${owner}/${repo} is:issue in:body "${marker}"`;
-              const search = await github.rest.search.issuesAndPullRequests({ q });
-              if (search.data.total_count > 0) {
+              if (await issueExists(marker)) {
                 core.info(`Issue already exists for alert ${alertId}, skipping.`);
                 continue;
               }
 
-              // Extract details (fields as returned by listAlertsForRepo)
               const advisory = alert.security_advisory || {};
               const vuln = alert.security_vulnerability || {};
               const dependency = alert.dependency || {};
 
               const ghsa =
                 advisory.ghsa_id ||
-                (advisory.identifiers || []).find(i => i.type === 'GHSA')?.value ||
-                'N/A';
+                (advisory.identifiers || []).find(i => i.type === "GHSA")?.value ||
+                "N/A";
               const cves = (advisory.identifiers || [])
-                .filter(i => i.type === 'CVE')
+                .filter(i => i.type === "CVE")
                 .map(i => i.value);
 
-              const severity = (advisory.severity || 'unknown').toLowerCase();
+              const severity = (advisory.severity || "unknown").toLowerCase();
 
               const pkg =
                 vuln.package?.name ||
                 dependency.package?.name ||
-                'dependency';
+                "dependency";
               const ecosystem =
                 vuln.package?.ecosystem ||
                 dependency.package?.ecosystem ||
-                'N/A';
+                "N/A";
 
-              const affected =
-                vuln.vulnerable_version_range ||
-                'N/A';
-              const fixedIn =
-                vuln.first_patched_version?.identifier ||
-                'N/A';
-              const manifest =
-                dependency.manifest_path ||
-                'N/A';
+              const affected = vuln.vulnerable_version_range || "N/A";
+              const fixedIn = vuln.first_patched_version?.identifier || "N/A";
+              const manifest = dependency.manifest_path || "N/A";
 
               const alertUrl =
                 alert.html_url ||
                 (alertId
                   ? `https://github.com/${owner}/${repo}/security/dependabot/${alertId}`
-                  : 'N/A');
+                  : "N/A");
 
               const title = `Dependabot ${severity.toUpperCase()}: ${ghsa} in ${pkg}`;
               const body = [
-                'This issue was created automatically (scheduled) for High/Critical Dependabot alerts and assigned to the Copilot Coding Agent for verification.',
-                '',
-                'Dependabot alert details',
+                "This issue was created automatically (scheduled) for High/Critical Dependabot alerts and assigned to the Copilot Coding Agent for verification.",
+                "",
+                "Dependabot alert details",
                 `- Alert URL: ${alertUrl}`,
                 `- Package: ${pkg} (${ecosystem})`,
                 `- Affected versions: ${affected}`,
                 `- Fixed in: ${fixedIn}`,
                 `- GHSA: ${ghsa}`,
-                `- CVEs: ${cves.length ? cves.join(', ') : 'N/A'}`,
+                `- CVEs: ${cves.length ? cves.join(", ") : "N/A"}`,
                 `- Manifest path: ${manifest}`,
-                '',
+                "",
                 `Tracking: ${marker}`
-              ].join('\n');
+              ].join("\n");
 
               try {
                 await github.rest.issues.create({
@@ -124,8 +146,8 @@ jobs:
                   repo,
                   title,
                   body,
-                  labels: ['security', 'dependabot', severity, 'verification:pending'],
-                  assignees: ['copilot']
+                  labels: ["security", "dependabot", severity, "verification:pending"],
+                  assignees: ["copilot"]
                 });
                 core.info(`Created and assigned issue for alert ${alertId}`);
               } catch (e) {
@@ -135,16 +157,20 @@ jobs:
                     repo,
                     title,
                     body,
-                    labels: ['security', 'dependabot', severity, 'verification:pending', 'copilot-assignment-failed']
+                    labels: ["security", "dependabot", severity, "verification:pending", "copilot-assignment-failed"]
                   });
                   await github.rest.issues.createComment({
                     owner,
                     repo,
                     issue_number: created.data.number,
-                    body: 'Automatic assignment to @copilot failed. Ensure the Copilot Coding Agent is enabled for this repo and is assignable.'
+                    body: "Automatic assignment to @copilot failed. Ensure the Copilot Coding Agent is enabled for this repo and is assignable."
                   });
                   core.warning(`Assignment to @copilot failed for alert ${alertId}; created issue with fallback label.`);
+                } else if (e.status === 403) {
+                  core.error(`Issues API denied (403). Verify the GitHub App has 'Issues: Read and write' and is installed on this repository. Message: ${e.message}`);
+                  throw e;
                 } else {
+                  core.error(`Issues API error: ${e.status || ""} ${e.message}`);
                   throw e;
                 }
               }
