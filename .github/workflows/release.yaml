@@ -4,6 +4,9 @@ on:
     branches:
       - main
       - 'release/**'
+    paths:
+      - "src/**"
+  workflow_dispatch:
 
 jobs:
   build:
@@ -44,7 +47,7 @@ jobs:
         with:
           registry: ${{ vars.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PAT }}
 
       - name: Cache layers
         uses: actions/cache@v3
