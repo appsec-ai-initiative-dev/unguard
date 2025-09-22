@@ -53,6 +53,8 @@ jobs:
           GHCR_IMAGE_PREFIX: ${{ env.GHCR_IMAGE_PREFIX }}
         run: |
           set -euo pipefail
+          declare -A IMAGE_NAME_OVERRIDE
+          IMAGE_NAME_OVERRIDE["frontend-nextjs"]="unguard-frontend"
           if [ -f Dockerfile ]; then
             ROOT_IMAGE="${REGISTRY}/${GHCR_IMAGE_PREFIX}/unguard:${IMAGE_TAG}"
             docker build -t "$ROOT_IMAGE" -f Dockerfile .
@@ -60,9 +62,15 @@ jobs:
           fi
           find ./src -name Dockerfile | sort | while read -r dockerfile; do
             service=$(basename "$(dirname "$dockerfile")")
-            image_name="unguard-${service}"
+            if [[ -n "${IMAGE_NAME_OVERRIDE[$service]+x}" ]]; then
+              image_name="${IMAGE_NAME_OVERRIDE[$service]}"
+            else
+              image_name="unguard-${service}"
+            fi
             image_uri="${REGISTRY}/${GHCR_IMAGE_PREFIX}/${image_name}:${IMAGE_TAG}"
+            echo "Building $dockerfile -> $image_uri"
             docker build -t "$image_uri" -f "$dockerfile" "$(dirname "$dockerfile")"
+            echo "Pushing $image_uri"
             docker push "$image_uri"
           done
 
@@ -165,7 +173,7 @@ jobs:
             echo "Expected chart package $chart_package missing" >&2
             exit 1
           fi
-          helm push "$chart_package" oci://ghcr.io/${GHCR_IMAGE_PREFIX}
+          helm push "$chart_package" oci://ghcr.io/${GHCR_IMAGE_PREFIX} --force
 
       - name: Upload packaged chart artifact
         uses: actions/upload-artifact@v4
