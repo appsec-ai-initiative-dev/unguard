@@ -17,9 +17,6 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
-      - name: Normalise repository path
-        run: |
-          echo "REPO_PATH=$(echo '${GITHUB_REPOSITORY}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - name: Get release version
         if: startsWith(github.ref_name, 'release')
         uses: actions-ecosystem/action-regex-match@v2
@@ -67,7 +64,7 @@ jobs:
           command: build
           skip-tests: true
           tag: ${{ env.IMAGE_TAG }}
-          repository: ${{ vars.REGISTRY }}/${{ env.REPO_PATH }}
+          repository: ${{ vars.REGISTRY }}/${{ github.repository }}
           push: true
 
       - name: Update helm image tags
@@ -106,5 +103,4 @@ jobs:
       - name: Publish Helm chart to GHCR
         run: |
           helm package chart
-          helm push unguard-${{ env.IMAGE_TAG }}.tgz oci://${{ vars.REGISTRY }}/${{ env.REPO_PATH }}/chart
-
+          helm push unguard-${{ env.IMAGE_TAG }}.tgz oci://${{ vars.REGISTRY }}/${{ github.repository }}/chart
