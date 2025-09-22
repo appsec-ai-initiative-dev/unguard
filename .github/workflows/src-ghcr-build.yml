@@ -1,0 +1,175 @@
+name: Build and Publish GHCR Artifacts
+
+permissions:
+  contents: read
+  packages: write
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ghcr-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        run: |
+          TAG=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Derive GHCR namespace
+        run: |
+          if [ -n "${{ secrets.GHCR_NAMESPACE }}" ]; then
+            RAW='${{ secrets.GHCR_NAMESPACE }}'
+          else
+            RAW='${{ github.repository }}'
+          fi
+          NS=$(echo "$RAW" | tr '[:upper:]' '[:lower:]')
+          echo "GHCR_IMAGE_PREFIX=$NS" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR (Docker)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Build and push container images
+        env:
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          GHCR_IMAGE_PREFIX: ${{ env.GHCR_IMAGE_PREFIX }}
+        run: |
+          set -euo pipefail
+          if [ -f Dockerfile ]; then
+            ROOT_IMAGE="${REGISTRY}/${GHCR_IMAGE_PREFIX}/unguard:${IMAGE_TAG}"
+            docker build -t "$ROOT_IMAGE" -f Dockerfile .
+            docker push "$ROOT_IMAGE"
+          fi
+          find ./src -name Dockerfile | sort | while read -r dockerfile; do
+            service=$(basename "$(dirname "$dockerfile")")
+            image_name="unguard-${service}"
+            image_uri="${REGISTRY}/${GHCR_IMAGE_PREFIX}/${image_name}:${IMAGE_TAG}"
+            docker build -t "$image_uri" -f "$dockerfile" "$(dirname "$dockerfile")"
+            docker push "$image_uri"
+          done
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR (Helm)
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -n "$GHCR_PAT" ]; then
+            echo "$GHCR_PAT" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+          else
+            echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+          fi
+
+      - name: Prepare Helm chart metadata and values
+        env:
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          GHCR_IMAGE_PREFIX: ${{ env.GHCR_IMAGE_PREFIX }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user 'ruamel.yaml>=0.17'
+          python3 - <<'PYCHART'
+import os
+from pathlib import Path
+from ruamel.yaml import YAML
+
+yaml = YAML()
+yaml.preserve_quotes = True
+yaml.indent(mapping=2, sequence=4, offset=2)
+
+chart_path = Path('chart/Chart.yaml')
+values_path = Path('chart/values.yaml')
+namespace = os.environ['GHCR_IMAGE_PREFIX']
+tag = os.environ['IMAGE_TAG']
+
+with chart_path.open('r', encoding='utf-8') as f:
+    chart = yaml.load(f)
+
+base_version = chart['version']
+pre_release = f"{base_version}-{tag}"
+app_version = f"{base_version}+{tag}"
+chart['version'] = pre_release
+chart['appVersion'] = app_version
+
+with chart_path.open('w', encoding='utf-8') as f:
+    yaml.dump(chart, f)
+
+with values_path.open('r', encoding='utf-8') as f:
+    values = yaml.load(f)
+
+markers = (
+    'ghcr.io/dynatrace-oss/unguard',
+    'ghcr.io/appsec-ai-initiative-dev/unguard',
+)
+
+def should_update(repo: str) -> bool:
+    if not isinstance(repo, str):
+        return False
+    if repo.startswith(f"ghcr.io/{namespace}/"):
+        return True
+    return any(marker in repo for marker in markers)
+
+def update_images(node):
+    if isinstance(node, dict):
+        if 'repository' in node and 'tag' in node:
+            repo = node['repository']
+            if should_update(repo):
+                image_name = repo.split('/')[-1]
+                node['repository'] = f"ghcr.io/{namespace}/{image_name}"
+                node['tag'] = tag
+        for value in node.values():
+            update_images(value)
+    elif isinstance(node, list):
+        for item in node:
+            update_images(item)
+
+update_images(values)
+
+with values_path.open('w', encoding='utf-8') as f:
+    yaml.dump(values, f)
+
+with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as envfile:
+    envfile.write(f"CHART_VERSION={pre_release}\n")
+PYCHART
+
+      - name: Package Helm chart
+        run: helm package chart
+
+      - name: Publish Helm chart to GHCR
+        env:
+          CHART_VERSION: ${{ env.CHART_VERSION }}
+          GHCR_IMAGE_PREFIX: ${{ env.GHCR_IMAGE_PREFIX }}
+        run: |
+          set -euo pipefail
+          chart_package="unguard-${CHART_VERSION}.tgz"
+          if [ ! -f "$chart_package" ]; then
+            echo "Expected chart package $chart_package missing" >&2
+            exit 1
+          fi
+          helm push "$chart_package" oci://ghcr.io/${GHCR_IMAGE_PREFIX}
+
+      - name: Upload packaged chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart-${{ env.CHART_VERSION }}
+          path: unguard-${{ env.CHART_VERSION }}.tgz
+          if-no-files-found: error
