@@ -88,68 +88,68 @@ jobs:
           set -euo pipefail
           python3 -m pip install --user 'ruamel.yaml>=0.17'
           python3 - <<'PYCHART'
-import os
-from pathlib import Path
-from ruamel.yaml import YAML
+          import os
+          from pathlib import Path
+          from ruamel.yaml import YAML
 
-yaml = YAML()
-yaml.preserve_quotes = True
-yaml.indent(mapping=2, sequence=4, offset=2)
+          yaml = YAML()
+          yaml.preserve_quotes = True
+          yaml.indent(mapping=2, sequence=4, offset=2)
 
-chart_path = Path('chart/Chart.yaml')
-values_path = Path('chart/values.yaml')
-namespace = os.environ['GHCR_IMAGE_PREFIX']
-tag = os.environ['IMAGE_TAG']
+          chart_path = Path('chart/Chart.yaml')
+          values_path = Path('chart/values.yaml')
+          namespace = os.environ['GHCR_IMAGE_PREFIX']
+          tag = os.environ['IMAGE_TAG']
 
-with chart_path.open('r', encoding='utf-8') as f:
-    chart = yaml.load(f)
+          with chart_path.open('r', encoding='utf-8') as f:
+              chart = yaml.load(f)
 
-base_version = chart['version']
-pre_release = f"{base_version}-{tag}"
-app_version = f"{base_version}+{tag}"
-chart['version'] = pre_release
-chart['appVersion'] = app_version
+          base_version = chart['version']
+          pre_release = f"{base_version}-{tag}"
+          app_version = f"{base_version}+{tag}"
+          chart['version'] = pre_release
+          chart['appVersion'] = app_version
 
-with chart_path.open('w', encoding='utf-8') as f:
-    yaml.dump(chart, f)
+          with chart_path.open('w', encoding='utf-8') as f:
+              yaml.dump(chart, f)
 
-with values_path.open('r', encoding='utf-8') as f:
-    values = yaml.load(f)
+          with values_path.open('r', encoding='utf-8') as f:
+              values = yaml.load(f)
 
-markers = (
-    'ghcr.io/dynatrace-oss/unguard',
-    'ghcr.io/appsec-ai-initiative-dev/unguard',
-)
+          markers = (
+              'ghcr.io/dynatrace-oss/unguard',
+              'ghcr.io/appsec-ai-initiative-dev/unguard',
+          )
 
-def should_update(repo: str) -> bool:
-    if not isinstance(repo, str):
-        return False
-    if repo.startswith(f"ghcr.io/{namespace}/"):
-        return True
-    return any(marker in repo for marker in markers)
+          def should_update(repo: str) -> bool:
+              if not isinstance(repo, str):
+                  return False
+              if repo.startswith(f"ghcr.io/{namespace}/"):
+                  return True
+              return any(marker in repo for marker in markers)
 
-def update_images(node):
-    if isinstance(node, dict):
-        if 'repository' in node and 'tag' in node:
-            repo = node['repository']
-            if should_update(repo):
-                image_name = repo.split('/')[-1]
-                node['repository'] = f"ghcr.io/{namespace}/{image_name}"
-                node['tag'] = tag
-        for value in node.values():
-            update_images(value)
-    elif isinstance(node, list):
-        for item in node:
-            update_images(item)
+          def update_images(node):
+              if isinstance(node, dict):
+                  if 'repository' in node and 'tag' in node:
+                      repo = node['repository']
+                      if should_update(repo):
+                          image_name = repo.split('/')[-1]
+                          node['repository'] = f"ghcr.io/{namespace}/{image_name}"
+                          node['tag'] = tag
+                  for value in node.values():
+                      update_images(value)
+              elif isinstance(node, list):
+                  for item in node:
+                      update_images(item)
 
-update_images(values)
+          update_images(values)
 
-with values_path.open('w', encoding='utf-8') as f:
-    yaml.dump(values, f)
+          with values_path.open('w', encoding='utf-8') as f:
+              yaml.dump(values, f)
 
-with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as envfile:
-    envfile.write(f"CHART_VERSION={pre_release}\n")
-PYCHART
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as envfile:
+              envfile.write(f"CHART_VERSION={pre_release}\n")
+          PYCHART
 
       - name: Package Helm chart
         run: helm package chart
