@@ -173,7 +173,13 @@ jobs:
             echo "Expected chart package $chart_package missing" >&2
             exit 1
           fi
-          helm push "$chart_package" oci://ghcr.io/${GHCR_IMAGE_PREFIX} --force
+          repo_base="oci://ghcr.io/${GHCR_IMAGE_PREFIX}"
+          repo_chart="${repo_base}/unguard"
+          if helm show chart "$repo_chart" --version "$CHART_VERSION" >/dev/null 2>&1; then
+            echo "Chart $CHART_VERSION already present at $repo_chart; skipping push"
+          else
+            helm push "$chart_package" "$repo_base"
+          fi
 
       - name: Upload packaged chart artifact
         uses: actions/upload-artifact@v4
