@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    if: false  # Workflow disabled
+    #if: false  # Workflow disabled
     name: Publish on container registry
     runs-on: ubuntu-22.04
     steps:
