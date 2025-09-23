@@ -5,7 +5,7 @@
 - Use sample queries as the baseline from: https://docs.dynatrace.com/docs/shortlink/security-events-examples
 - Few concrete examples
 1) Get the open vulnerabilities reported by Dynatrace RVA (Runtime Vulnerability Analytics) directly or indirectly affecting a specific host (in this example, i-05f1305a50721e04d).
-fetch security.events
+```fetch security.events
 | filter dt.system.bucket=="default_securityevents_builtin"
      AND event.provider=="Dynatrace"
      AND event.type=="VULNERABILITY_STATE_REPORT_EVENT"
@@ -37,9 +37,10 @@ fetch security.events
                                      else:if(vulnerability.risk.score>=0.1,"LOW",
                                      else:"NONE"))))
 | sort {vulnerability.risk.score, direction:"descending"}, {affected_entities, direction:"descending"}
+```
 
 2) Query for security events for a specific vulnerability (CVE-2023-41419) from Dynatrace RVA:
-fetch security.events
+```fetch security.events
 | filter dt.system.bucket=="default_securityevents_builtin"
      AND event.provider=="Dynatrace"
      AND event.type=="VULNERABILITY_STATE_REPORT_EVENT"
@@ -51,6 +52,7 @@ fetch security.events
 | filter vulnerability.resolution.status == "OPEN"
      AND vulnerability.parent.mute.status != "MUTED"
      AND vulnerability.mute.status != "MUTED"
+```
 
 ### Entity information reporting
 - When reporting an entity, include the name of the entity and it's ID in the format name(ID).
