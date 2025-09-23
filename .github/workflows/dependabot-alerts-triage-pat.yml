@@ -51,7 +51,6 @@ jobs:
           script: |
             const fs = require('fs');
             const path = require('path');
-            const { getOctokit } = require('@actions/github');
 
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -285,7 +284,8 @@ jobs:
                 core.warning("No COPILOT_SPONSOR_PAT_VALERIY configured; cannot assign Copilot as a sponsoring user.");
                 throw new Error("COPILOT_SPONSOR_PAT_MISSING");
               }
-              const sponsor = getOctokit(sponsorToken);
+              // IMPORTANT: create a new Octokit using the provided 'github' instance's constructor
+              const sponsor = new github.constructor({ auth: sponsorToken });
 
               // Fallback: discover Copilot via assignableUsers in the sponsor (user) context
               if (!copilotId) {
