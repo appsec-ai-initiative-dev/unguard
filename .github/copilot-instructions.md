@@ -15,8 +15,8 @@
 - When verifying a vulnerability found by Dependabot with vulnerabilities found by Dynatrace, query the `security.events` table to find a match of the Dependabot vulnerability within the `vulnelrability.references.cve` list reported by Dynatrace.
 - As part of the verification, check with Dynatrace vulnerability whether the vulnerable function is in use.
 - If the Dependabot vulnerability is not observed by Dynatrace, mark the alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Vulnerability was not observed in the monitored environment by Dynatarce".
-- If vulnerability is confirmed by Dynatrace, add a comment to the dependabot alert with all the relevant vulnerability information:
+- If vulnerability is confirmed by Dynatrace, add a comment to the dependabot alert or the issue related ot it with all the relevant runtime vulnerability information from Dynatrace:
   * Davis risk level and score
   * Vulnerable function in use ornot status
   * Davis assessments
-  * Total number of the affected entities and their names + ids.
+  * Total number of the affected entities and list their names + ids (in format <name>(<id>)).
