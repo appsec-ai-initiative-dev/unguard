@@ -1,4 +1,4 @@
-FROM locustio/locust:2.9.0
+FROM locustio/locust:2.20.0
 
 # install curl
 USER root
