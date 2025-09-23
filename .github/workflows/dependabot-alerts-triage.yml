@@ -255,13 +255,35 @@ jobs:
 
               const repositoryId = repoInfo.repository.id;
 
-              // DEBUG: print out the returned assignable actors before lookup
-              const actors = repoInfo.repository.suggestedActors?.nodes || [];
-              core.info(\`Debug: suggestedActors (CAN_BE_ASSIGNED) returned \${actors.length} nodes: \${JSON.stringify(actors)}\`);
+              // DEBUG: print out the returned assignable actors before lookup (no optional chaining)
+              const actors =
+                repoInfo &&
+                repoInfo.repository &&
+                repoInfo.repository.suggestedActors &&
+                Array.isArray(repoInfo.repository.suggestedActors.nodes)
+                  ? repoInfo.repository.suggestedActors.nodes
+                  : [];
+
+              try {
+                // Limit to first 25 entries for readability
+                const preview = actors.slice(0, 25);
+                core.info("Debug: suggestedActors (CAN_BE_ASSIGNED) count: " + actors.length);
+                core.info("Debug: suggestedActors preview (first " + preview.length + "): " + JSON.stringify(preview, null, 2));
+              } catch (dbgErr) {
+                core.warning("Debug: Failed to stringify suggestedActors: " + (dbgErr && dbgErr.message ? dbgErr.message : String(dbgErr)));
+                core.info("Debug: suggestedActors count: " + actors.length);
+                for (const n of actors) {
+                  try {
+                    core.info(" - " + (n.login || "<no login>") + " (" + (n.__typename || "?") + ") id: " + (n.id || "<no id>"));
+                  } catch {}
+                }
+              }
 
               // Select the Copilot coding agent explicitly by login.
               const copilotNode = actors.find(
-                n => n.login === "copilot-swe-agent" && n.__typename === "Bot" && n.id
+                function (n) {
+                  return n && n.login === "copilot-swe-agent" && n.__typename === "Bot" && n.id;
+                }
               );
 
               if (!copilotNode) {
