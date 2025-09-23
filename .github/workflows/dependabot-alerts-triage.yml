@@ -2,8 +2,8 @@
 name: Dependabot High/Critical -> Assign to Copilot (Scheduled)
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"
+#  schedule:
+#    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
 # Note: This 'permissions' block only affects the default GITHUB_TOKEN, not your App token.
