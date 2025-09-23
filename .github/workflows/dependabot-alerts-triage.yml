@@ -233,8 +233,7 @@ jobs:
             const labelsToAdd = ["security", "dependabot", overallSeverity, "verification:pending"];
 
             try {
-              // Query repository ID and suggested actors who CAN_BE_ASSIGNED.
-              // Focus on finding 'copilot-swe-agent' and use its ID to assign.
+              // Primary: suggestedActors (CAN_BE_ASSIGNED), per guidance
               const repoInfo = await github.graphql(
                 `query($owner: String!, $repo: String!) {
                   repository(owner: $owner, name: $repo) {
@@ -243,66 +242,113 @@ jobs:
                       nodes {
                         login
                         __typename
-                        ... on Bot {
-                          id
+                        ... on Bot { id }
+                        ... on User { id }
+                      }
+                    }
+                  }
+                }`,
+                { owner, repo }
+              );
+
+              const repositoryId = repoInfo.repository.id;
+
+              // Debug: suggestedActors
+              const actors = (repoInfo &&
+                              repoInfo.repository &&
+                              repoInfo.repository.suggestedActors &&
+                              Array.isArray(repoInfo.repository.suggestedActors.nodes))
+                                ? repoInfo.repository.suggestedActors.nodes
+                                : [];
+              try {
+                core.info("Debug: suggestedActors (CAN_BE_ASSIGNED) count: " + actors.length);
+                const preview = actors.slice(0, 25);
+                core.info("Debug: suggestedActors preview (first " + preview.length + "): " + JSON.stringify(preview, null, 2));
+              } catch (dbgErr) {
+                core.warning("Debug: Failed to stringify suggestedActors: " + (dbgErr && dbgErr.message ? dbgErr.message : String(dbgErr)));
+              }
+
+              // Try to pick copilot-swe-agent from suggestedActors
+              let copilotId = null;
+              const fromSuggested = actors.find(function(n) {
+                return n && n.login === "copilot-swe-agent" && n.id;
+              });
+              if (fromSuggested && fromSuggested.id) {
+                copilotId = fromSuggested.id;
+                core.info("Debug: Found copilot-swe-agent in suggestedActors.");
+              }
+
+              // Fallback 1: assignableUsers with exact login
+              if (!copilotId) {
+                try {
+                  const assignableRes = await github.graphql(
+                    `query($owner: String!, $repo: String!, $login: String!) {
+                      repository(owner: $owner, name: $repo) {
+                        assignableUsers(query: $login, first: 10) {
+                          nodes { id login __typename }
                         }
                       }
-                    }
+                    }`,
+                    { owner, repo, login: "copilot-swe-agent" }
+                  );
+                  const nodes = (assignableRes &&
+                                 assignableRes.repository &&
+                                 assignableRes.repository.assignableUsers &&
+                                 Array.isArray(assignableRes.repository.assignableUsers.nodes))
+                                   ? assignableRes.repository.assignableUsers.nodes
+                                   : [];
+                  core.info("Debug: assignableUsers('copilot-swe-agent') count: " + nodes.length);
+                  const exact = nodes.find(function(n) { return n && n.login === "copilot-swe-agent" && n.id; });
+                  if (exact) {
+                    copilotId = exact.id;
+                    core.info("Debug: Found copilot-swe-agent via assignableUsers.");
                   }
-                }`,
-                { owner, repo }
-              );
-
-              // Existing: repoInfo with suggestedActors
-            const repositoryId = repoInfo.repository.id;
-            core.info("Debug: repositoryId: " + repositoryId);
-            
-            // Existing: print suggestedActors (you already added this)
-            const actors =
-              repoInfo &&
-              repoInfo.repository &&
-              repoInfo.repository.suggestedActors &&
-              Array.isArray(repoInfo.repository.suggestedActors.nodes)
-                ? repoInfo.repository.suggestedActors.nodes
-                : [];
-            
-            core.info("Debug: suggestedActors (CAN_BE_ASSIGNED) count: " + actors.length);
-            core.info("Debug: suggestedActors preview (first " + Math.min(actors.length, 25) + "): " + JSON.stringify(actors.slice(0,25), null, 2));
-            
-            // NEW: extra visibility — see if anything “copilot” appears among assignableUsers
-            try {
-              const assignable = await github.graphql(
-                `query($owner: String!, $repo: String!) {
-                  repository(owner: $owner, name: $repo) {
-                    assignableUsers(query: "copilot", first: 25) {
-                      nodes {
-                        login
-                        __typename
-                      }
-                    }
-                  }
-                }`,
-                { owner, repo }
-              );
-              const assignableCopilot = assignable.repository.assignableUsers?.nodes || [];
-              core.info("Debug: assignableUsers(query: 'copilot') count: " + assignableCopilot.length);
-              core.info("Debug: assignableUsers(query: 'copilot') preview: " + JSON.stringify(assignableCopilot, null, 2));
-            } catch (qErr) {
-              core.warning("Debug: assignableUsers(copilot) query failed: " + (qErr.message || String(qErr)));
-            }
-
-              // Select the Copilot coding agent explicitly by login.
-              const copilotNode = actors.find(
-                function (n) {
-                  return n && n.login === "copilot-swe-agent" && n.__typename === "Bot" && n.id;
+                } catch (assignErr) {
+                  core.warning("Debug: assignableUsers lookup failed: " + (assignErr && assignErr.message ? assignErr.message : String(assignErr)));
                 }
-              );
+              }
 
-              if (!copilotNode) {
+              // Fallback 2: REST list assignees, use node_id
+              if (!copilotId) {
+                try {
+                  let page = 1;
+                  let found = null;
+                  for (;;) {
+                    const res = await github.rest.issues.listAssignees({
+                      owner,
+                      repo,
+                      per_page: 100,
+                      page
+                    });
+                    const arr = Array.isArray(res.data) ? res.data : [];
+                    const hit = arr.find(function(u) { return u && u.login === "copilot-swe-agent" && (u.node_id || u.id); });
+                    if (hit) {
+                      // node_id is the GraphQL node ID
+                      copilotId = hit.node_id || null;
+                      if (!copilotId) {
+                        core.warning("Debug: copilot-swe-agent found via REST but missing node_id; cannot assign with assigneeIds.");
+                      } else {
+                        core.info("Debug: Found copilot-swe-agent via REST listAssignees.");
+                      }
+                      found = hit;
+                      break;
+                    }
+                    if (arr.length < 100) break;
+                    page++;
+                  }
+                  if (!found) {
+                    core.info("Debug: copilot-swe-agent not found via REST listAssignees.");
+                  }
+                } catch (restErr) {
+                  core.warning("Debug: REST listAssignees failed: " + (restErr && restErr.message ? restErr.message : String(restErr)));
+                }
+              }
+
+              if (!copilotId) {
                 throw new Error("COPILOT_NOT_ASSIGNABLE");
               }
 
-              // Create the issue using GraphQL with assigneeIds (Copilot).
+              // Create the issue using GraphQL with assigneeIds (Copilot)
               const createIssueRes = await github.graphql(
                 `mutation($repositoryId: ID!, $title: String!, $body: String!, $assigneeIds: [ID!]) {
                   createIssue(input: {
@@ -321,13 +367,13 @@ jobs:
                   repositoryId,
                   title,
                   body,
-                  assigneeIds: [copilotNode.id]
+                  assigneeIds: [copilotId]
                 }
               );
 
               const issueNumber = createIssueRes.createIssue.issue.number;
 
-              // Add labels via REST.
+              // Add labels via REST (simpler)
               await github.rest.issues.addLabels({
                 owner,
                 repo,
@@ -351,7 +397,7 @@ jobs:
                   owner,
                   repo,
                   issue_number: created.data.number,
-                  body: "Automatic assignment to the Copilot coding agent (copilot-swe-agent) could not be completed via GraphQL (assigneeIds). Please assign manually if needed."
+                  body: "Automatic assignment to the Copilot coding agent (copilot-swe-agent) could not be completed via GraphQL (assigneeIds). Please ensure Copilot coding agent is enabled for this repository and that this GitHub App token can list assignees."
                 });
                 core.warning(`Copilot assignment unavailable; created issue #${created.data.number} with fallback label.`);
               } else if (e.status === 403) {
