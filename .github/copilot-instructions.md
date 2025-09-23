@@ -65,6 +65,6 @@ fetch security.events
 - If the Dependabot vulnerability is not observed by Dynatrace, mark the alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Vulnerability was not observed in the monitored environment by Dynatarce".
 - If vulnerability is confirmed by Dynatrace, add a comment to the dependabot alert or the issue related ot it with all the relevant runtime vulnerability information from Dynatrace:
   * Davis risk level and score
-  * Vulnerable function in use ornot status
+  * Vulnerable function in use or not status
   * Davis assessments
   * Total number of the affected entities and list their names + ids (in format <name>(<id>)).
