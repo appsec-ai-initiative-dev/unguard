@@ -253,31 +253,43 @@ jobs:
                 { owner, repo }
               );
 
-              const repositoryId = repoInfo.repository.id;
-
-              // DEBUG: print out the returned assignable actors before lookup (no optional chaining)
-              const actors =
-                repoInfo &&
-                repoInfo.repository &&
-                repoInfo.repository.suggestedActors &&
-                Array.isArray(repoInfo.repository.suggestedActors.nodes)
-                  ? repoInfo.repository.suggestedActors.nodes
-                  : [];
-
-              try {
-                // Limit to first 25 entries for readability
-                const preview = actors.slice(0, 25);
-                core.info("Debug: suggestedActors (CAN_BE_ASSIGNED) count: " + actors.length);
-                core.info("Debug: suggestedActors preview (first " + preview.length + "): " + JSON.stringify(preview, null, 2));
-              } catch (dbgErr) {
-                core.warning("Debug: Failed to stringify suggestedActors: " + (dbgErr && dbgErr.message ? dbgErr.message : String(dbgErr)));
-                core.info("Debug: suggestedActors count: " + actors.length);
-                for (const n of actors) {
-                  try {
-                    core.info(" - " + (n.login || "<no login>") + " (" + (n.__typename || "?") + ") id: " + (n.id || "<no id>"));
-                  } catch {}
-                }
-              }
+              // Existing: repoInfo with suggestedActors
+            const repositoryId = repoInfo.repository.id;
+            core.info("Debug: repositoryId: " + repositoryId);
+            
+            // Existing: print suggestedActors (you already added this)
+            const actors =
+              repoInfo &&
+              repoInfo.repository &&
+              repoInfo.repository.suggestedActors &&
+              Array.isArray(repoInfo.repository.suggestedActors.nodes)
+                ? repoInfo.repository.suggestedActors.nodes
+                : [];
+            
+            core.info("Debug: suggestedActors (CAN_BE_ASSIGNED) count: " + actors.length);
+            core.info("Debug: suggestedActors preview (first " + Math.min(actors.length, 25) + "): " + JSON.stringify(actors.slice(0,25), null, 2));
+            
+            // NEW: extra visibility — see if anything “copilot” appears among assignableUsers
+            try {
+              const assignable = await github.graphql(
+                `query($owner: String!, $repo: String!) {
+                  repository(owner: $owner, name: $repo) {
+                    assignableUsers(query: "copilot", first: 25) {
+                      nodes {
+                        login
+                        __typename
+                      }
+                    }
+                  }
+                }`,
+                { owner, repo }
+              );
+              const assignableCopilot = assignable.repository.assignableUsers?.nodes || [];
+              core.info("Debug: assignableUsers(query: 'copilot') count: " + assignableCopilot.length);
+              core.info("Debug: assignableUsers(query: 'copilot') preview: " + JSON.stringify(assignableCopilot, null, 2));
+            } catch (qErr) {
+              core.warning("Debug: assignableUsers(copilot) query failed: " + (qErr.message || String(qErr)));
+            }
 
               // Select the Copilot coding agent explicitly by login.
               const copilotNode = actors.find(
