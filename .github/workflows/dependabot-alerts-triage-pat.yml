@@ -1,41 +1,58 @@
 ---
-name: Dependabot High/Critical -> Assign to Copilot (Scheduled) - PAT Version
+name: Dependabot High/Critical -> Assign to Copilot (Scheduled)
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"
+#  schedule:
+#    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
-# Note: This 'permissions' block affects the default GITHUB_TOKEN behavior.
-# Since we're using a PAT, these permissions should match the PAT's capabilities.
+# Note: This 'permissions' block only affects the default GITHUB_TOKEN, not your App token.
+# It's fine to keep minimal; your App token governs its own permissions.
 permissions:
   contents: read
   issues: write
   security-events: read
 
 concurrency:
-  group: dependabot-triage-pat
+  group: dependabot-triage
   cancel-in-progress: true
 
 jobs:
   triage-high-critical:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.AI_APP_ID }}
+          private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
+          # Ensure the app is installed on this repository
+          owner: AppSec-AI-Initiative-Dev
+          repositories: |
+            unguard
+
       - name: Cache last run timestamp
         uses: actions/cache@v3
         with:
           path: last-run.txt
-          key: dependabot-triage-pat-lastrun-${{ github.run_id }}
+          key: dependabot-triage-lastrun-${{ github.run_id }}
           restore-keys: |
-            dependabot-triage-pat-lastrun-
+            dependabot-triage-lastrun-
 
       - name: Fetch new Dependabot alerts and create consolidated issue
         uses: actions/github-script@v7
+        env:
+          # Fine-grained PAT for the sponsoring user (has Copilot seat + repo access)
+          COPILOT_SPONSOR_PAT_VALERIY: ${{ secrets.COPILOT_SPONSOR_PAT_VALERIY }}
         with:
-          github-token: ${{ secrets.COPILOT_SPONSOR_PAT_VALERIY }}
+          # Keep using the App token for Dependabot/security endpoints
+          github-token: ${{ steps['app-token'].outputs.token }}
           script: |
             const fs = require('fs');
             const path = require('path');
+            const { getOctokit } = require('@actions/github');
+
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
@@ -222,7 +239,7 @@ jobs:
             const labelsToAdd = ["security", "dependabot", overallSeverity, "verification:pending"];
 
             try {
-              // Primary: suggestedActors (CAN_BE_ASSIGNED)
+              // Use App token for repo info (safe) and for suggestions (may omit bots)
               const repoInfo = await github.graphql(
                 `query($owner: String!, $repo: String!) {
                   repository(owner: $owner, name: $repo) {
@@ -242,74 +259,61 @@ jobs:
               const repositoryId = repoInfo.repository.id;
 
               // Debug: suggestedActors
-              const actors = (repoInfo &&
-                              repoInfo.repository &&
-                              repoInfo.repository.suggestedActors &&
-                              Array.isArray(repoInfo.repository.suggestedActors.nodes))
-                                ? repoInfo.repository.suggestedActors.nodes
-                                : [];
+              const actors =
+                repoInfo?.repository?.suggestedActors?.nodes && Array.isArray(repoInfo.repository.suggestedActors.nodes)
+                  ? repoInfo.repository.suggestedActors.nodes
+                  : [];
               try {
                 core.info("Debug: suggestedActors (CAN_BE_ASSIGNED) count: " + actors.length);
                 const preview = actors.slice(0, 25);
                 core.info("Debug: suggestedActors preview (first " + preview.length + "): " + JSON.stringify(preview, null, 2));
               } catch (dbgErr) {
-                core.warning("Debug: Failed to stringify suggestedActors: " + (dbgErr && dbgErr.message ? dbgErr.message : String(dbgErr)));
+                core.warning("Debug: Failed to stringify suggestedActors: " + (dbgErr?.message || String(dbgErr)));
               }
 
-              // Try to pick copilot-swe-agent from suggestedActors
+              // Try to pick copilot-swe-agent from suggestedActors (sometimes present)
               let copilotId = null;
-              const fromSuggested = actors.find(function(n) {
-                return n && n.login === "copilot-swe-agent" && n.id;
-              });
-              if (fromSuggested && fromSuggested.id) {
+              const fromSuggested = actors.find(n => n && n.login === "copilot-swe-agent" && n.id);
+              if (fromSuggested?.id) {
                 copilotId = fromSuggested.id;
                 core.info("Debug: Found copilot-swe-agent in suggestedActors.");
               }
 
-              // Fallback: fetch global user and verify repo assignability
+              // Create a sponsor client using the fine-grained PAT (acts as the human sponsor)
+              const sponsorToken = process.env.COPILOT_SPONSOR_PAT_VALERIY;
+              if (!sponsorToken) {
+                core.warning("No COPILOT_SPONSOR_PAT_VALERIY configured; cannot assign Copilot as a sponsoring user.");
+                throw new Error("COPILOT_SPONSOR_PAT_MISSING");
+              }
+              const sponsor = getOctokit(sponsorToken);
+
+              // Fallback: discover Copilot via assignableUsers in the sponsor (user) context
               if (!copilotId) {
                 try {
-                  const userRes = await github.request("GET /users/{username}", {
-                    username: "copilot-swe-agent"
-                  });
-                  const nodeId = userRes && userRes.data ? userRes.data.node_id : null;
-                  core.info("Debug: /users/copilot-swe-agent type=" + (userRes.data && userRes.data.type) + " node_id=" + nodeId);
-
-                  // Check if this repo can assign that actor (204 means assignable)
-                  let assignable = false;
-                  try {
-                    const check = await github.request("GET /repos/{owner}/{repo}/assignees/{assignee}", {
-                      owner,
-                      repo,
-                      assignee: "copilot-swe-agent"
-                    });
-                    if (check.status === 204) {
-                      assignable = true;
-                      core.info("Debug: copilot-swe-agent is assignable in this repo (REST check 204).");
-                    }
-                  } catch (chkErr) {
-                    if (chkErr && chkErr.status === 404) {
-                      core.info("Debug: copilot-swe-agent is NOT assignable in this repo (REST check 404).");
-                    } else {
-                      core.warning("Debug: assignee assignability check failed: " + (chkErr && chkErr.message ? chkErr.message : String(chkErr)));
-                    }
+                  const assignable = await sponsor.graphql(
+                    `query($owner:String!, $repo:String!){
+                      repository(owner:$owner, name:$repo){
+                        assignableUsers(query:"copilot-swe-agent", first: 10){
+                          nodes { id login __typename }
+                        }
+                      }
+                    }`,
+                    { owner, repo }
+                  );
+                  const nodes = assignable?.repository?.assignableUsers?.nodes || [];
+                  core.info("Debug: sponsor.assignableUsers('copilot-swe-agent') count: " + nodes.length);
+                  const exact = nodes.find(n => n && n.login === "copilot-swe-agent" && n.id);
+                  if (exact) {
+                    copilotId = exact.id;
+                    core.info("Debug: Found copilot-swe-agent via sponsor.assignableUsers.");
                   }
-
-                  if (assignable && nodeId) {
-                    copilotId = nodeId;
-                    core.info("Debug: Using node_id from /users as assigneeId.");
-                  }
-                } catch (userErr) {
-                  core.warning("Debug: GET /users/copilot-swe-agent failed: " + (userErr && userErr.message ? userErr.message : String(userErr)));
+                } catch (assignErr) {
+                  core.warning("Debug: sponsor.assignableUsers lookup failed: " + (assignErr?.message || String(assignErr)));
                 }
               }
 
-              if (!copilotId) {
-                throw new Error("COPILOT_NOT_ASSIGNABLE");
-              }
-
-              // Create the issue using GraphQL with assigneeIds (Copilot)
-              const createIssueRes = await github.graphql(
+              // Create the issue as the sponsoring user; assign Copilot if we have its node ID
+              const createIssueRes = await sponsor.graphql(
                 `mutation($repositoryId: ID!, $title: String!, $body: String!, $assigneeIds: [ID!]) {
                   createIssue(input: {
                     repositoryId: $repositoryId,
@@ -327,41 +331,53 @@ jobs:
                   repositoryId,
                   title,
                   body,
-                  assigneeIds: [copilotId]
+                  assigneeIds: copilotId ? [copilotId] : []
                 }
               );
 
               const issueNumber = createIssueRes.createIssue.issue.number;
 
-              // Add labels via REST
-              await github.rest.issues.addLabels({
+              // Add labels (either sponsor or app token works; use sponsor for consistency)
+              await sponsor.rest.issues.addLabels({
                 owner,
                 repo,
                 issue_number: issueNumber,
                 labels: labelsToAdd
               });
 
-              core.info(`Created consolidated issue #${issueNumber} and assigned to copilot-swe-agent via assigneeIds`);
+              if (copilotId) {
+                core.info(`Created consolidated issue #${issueNumber} and assigned to copilot-swe-agent (as sponsoring user).`);
+              } else {
+                core.warning(`Created consolidated issue #${issueNumber} without Copilot assignment (copilot-swe-agent not found in sponsor context).`);
+                await sponsor.rest.issues.addLabels({
+                  owner, repo, issue_number: issueNumber,
+                  labels: ["copilot-assignment-failed", "needs-human-sponsor"]
+                });
+                await sponsor.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber,
+                  body: "Copilot could not be auto-assigned via API in the sponsor context. Please assign `copilot-swe-agent` from the UI."
+                });
+              }
 
             } catch (e) {
-              // Fallback path: create without Copilot assignment, add a label and comment
-              if (e.message === "COPILOT_NOT_ASSIGNABLE" || e.status === 422) {
+              // Fallback path: create without Copilot assignment using the App token, add a label and comment
+              if (e.message === "COPILOT_SPONSOR_PAT_MISSING" || e.message === "COPILOT_NOT_ASSIGNABLE" || e.status === 422) {
                 const created = await github.rest.issues.create({
                   owner,
                   repo,
                   title,
                   body,
-                  labels: [...labelsToAdd, "copilot-assignment-failed"]
+                  labels: ["copilot-assignment-failed", "needs-human-sponsor", ...["security", "dependabot", criticalCount > 0 ? "critical" : "high", "verification:pending"]]
                 });
                 await github.rest.issues.createComment({
                   owner,
                   repo,
                   issue_number: created.data.number,
-                  body: "Automatic assignment to the Copilot coding agent (copilot-swe-agent) could not be completed. Ensure the agent is enabled for this repository and that this PAT token can assign it (it should appear in the repo Assignees REST check)."
+                  body: "Automatic assignment to the Copilot coding agent requires a human sponsor token. Please assign `copilot-swe-agent` from the UI, or configure COPILOT_SPONSOR_PAT_VALERIY."
                 });
-                core.warning(`Copilot assignment unavailable; created issue #${created.data.number} with fallback label.`);
+                core.warning(`Copilot assignment unavailable; created issue #${created.data.number} without assignment.`);
               } else if (e.status === 403) {
-                core.error(`Issues API denied (403). Verify the PAT token has appropriate permissions for Issues and is valid for this repository. Message: ${e.message}`);
+                core.error(`Issues API denied (403). Verify the GitHub App and/or PAT permissions. Message: ${e.message}`);
                 throw e;
               } else {
                 core.error(`Issue creation/assignment error: ${e.status || ""} ${e.message}`);
