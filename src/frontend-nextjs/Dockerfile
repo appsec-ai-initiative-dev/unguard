@@ -2,6 +2,14 @@
 
 FROM node:18-alpine AS base
 
+# Metadata labels for public GHCR visibility
+LABEL org.opencontainers.image.title="unguard-frontend"
+LABEL org.opencontainers.image.source="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.description="Frontend Next.js application for unguard demo application"
+LABEL org.opencontainers.image.url="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.documentation="https://github.com/AppSec-AI-Initiative-Dev/unguard/blob/main/README.md"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 # Install dependencies only when needed
 FROM base AS deps
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.

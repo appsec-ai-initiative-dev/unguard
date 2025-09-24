@@ -1,5 +1,13 @@
 FROM php:8.0-cli
 
+# Metadata labels for public GHCR visibility
+LABEL org.opencontainers.image.title="unguard-like-service"
+LABEL org.opencontainers.image.source="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.description="Like service for unguard demo application"
+LABEL org.opencontainers.image.url="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.documentation="https://github.com/AppSec-AI-Initiative-Dev/unguard/blob/main/README.md"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 COPY --from=composer:2.6.5 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www

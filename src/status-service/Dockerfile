@@ -1,5 +1,13 @@
 FROM golang:1.18-alpine as builder
 
+# Metadata labels for public GHCR visibility
+LABEL org.opencontainers.image.title="unguard-status-service"
+LABEL org.opencontainers.image.source="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.description="Status service for unguard demo application"
+LABEL org.opencontainers.image.url="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.documentation="https://github.com/AppSec-AI-Initiative-Dev/unguard/blob/main/README.md"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 RUN apk add git
 
 # Set destination for COPY

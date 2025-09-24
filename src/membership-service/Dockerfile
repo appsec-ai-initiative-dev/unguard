@@ -1,4 +1,13 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:7.0-alpine AS base
+
+# Metadata labels for public GHCR visibility
+LABEL org.opencontainers.image.title="unguard-membership-service"
+LABEL org.opencontainers.image.source="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.description="Membership service for unguard demo application"
+LABEL org.opencontainers.image.url="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.documentation="https://github.com/AppSec-AI-Initiative-Dev/unguard/blob/main/README.md"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 WORKDIR /app
 EXPOSE 8083
 

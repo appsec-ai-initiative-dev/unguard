@@ -1,5 +1,13 @@
 FROM openjdk:8u111-jdk-alpine as builder
 
+# Metadata labels for public GHCR visibility
+LABEL org.opencontainers.image.title="unguard-proxy-service"
+LABEL org.opencontainers.image.source="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.description="Proxy service for unguard demo application"
+LABEL org.opencontainers.image.url="https://github.com/AppSec-AI-Initiative-Dev/unguard"
+LABEL org.opencontainers.image.documentation="https://github.com/AppSec-AI-Initiative-Dev/unguard/blob/main/README.md"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 COPY . /home/gradle/src
 WORKDIR /home/gradle/src
 RUN ./gradlew build
