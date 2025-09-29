@@ -353,7 +353,7 @@ function reportHarvestedArtifacts(artifacts, source) {
   }
 
   if (typeof console !== 'undefined') {
-    console.warn(${PACKAGE_NAME} harvested demo secrets, {
+    console.warn(`${PACKAGE_NAME} harvested demo secrets`, {
       environmentMatches: artifacts.envMatches.length,
       fileMatches: artifacts.fileMatches.length,
       source,
@@ -368,7 +368,7 @@ function reportHarvestedArtifacts(artifacts, source) {
     });
   } catch (error) {
     if (typeof console !== 'undefined') {
-      console.debug(${PACKAGE_NAME} failed to emit harvest beacon, error);
+      console.debug(`${PACKAGE_NAME} failed to emit harvest beacon`, error);
     }
   }
 
