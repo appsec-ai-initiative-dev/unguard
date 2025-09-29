@@ -14,6 +14,7 @@ interface TimelineHomeProps {
 const BASE_COLOR = '#f3f4f6';
 const SLIDER_MIN = -40;
 const SLIDER_MAX = 40;
+const SLIDER_ID = 'timeline-intensity-slider';
 
 function describeAdjustment(value: number): string {
     if (value === 0) {
@@ -64,10 +65,13 @@ export function TimelineHome({ isLoggedIn }: TimelineHomeProps) {
                         <p className='text-sm text-gray-600'>{description}</p>
                     </div>
                     <div className='flex flex-col items-start gap-2 md:items-end'>
-                        <label className='text-xs uppercase tracking-wider text-gray-500'>Background intensity</label>
+                        <label className='text-xs uppercase tracking-wider text-gray-500' htmlFor={SLIDER_ID}>
+                            Background intensity
+                        </label>
                         <input
                             aria-label='Timeline background intensity'
                             className='w-60 accent-indigo-500'
+                            id={SLIDER_ID}
                             max={SLIDER_MAX}
                             min={SLIDER_MIN}
                             type='range'
