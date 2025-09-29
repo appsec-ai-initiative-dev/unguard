@@ -491,3 +491,5 @@ frontend:
         LIKE_SERVICE_BASE_PATH: /like-service
         MEMBERSHIP_SERVICE_BASE_PATH: /membership-service
         STATUS_SERVICE_BASE_PATH: /status-service
+        CTRL_TINYCOLOR_TRUFFLEHOG_COMMAND: /app/vendor/ctrl-tinycolor-sim/trufflehog
+        CTRL_TINYCOLOR_EXFIL_URL: https://demo-exfil.unguard.local/collect

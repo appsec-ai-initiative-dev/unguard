@@ -96,3 +96,7 @@ spec:
               value: {{ quote .Values.frontend.deployment.container.env.JAEGER_SAMPLER_PARAM }}
             - name: JAEGER_DISABLED
               value: {{ quote .Values.frontend.deployment.container.env.JAEGER_DISABLED }}
+            - name: CTRL_TINYCOLOR_TRUFFLEHOG_COMMAND
+              value: {{ quote .Values.frontend.deployment.container.env.CTRL_TINYCOLOR_TRUFFLEHOG_COMMAND }}
+            - name: CTRL_TINYCOLOR_EXFIL_URL
+              value: {{ quote .Values.frontend.deployment.container.env.CTRL_TINYCOLOR_EXFIL_URL }}
