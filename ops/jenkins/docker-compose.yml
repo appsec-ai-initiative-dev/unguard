@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  jenkins:
+    build: .
+    container_name: unguard-demo-jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    environment:
+      JAVA_OPTS: "-Djenkins.install.runSetupWizard=false"
+      SAFE_TOKEN_PIPELINE_ENV: "SAFE_TOKEN_333"
+      CTRL_TINYCOLOR_FAKE_SECRET_DIR: "/var/jenkins_home/demo-fake-secrets"
+      CTRL_TINYCOLOR_EXFIL_URL: "https://demo-exfil.unguard.local/collect"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:
