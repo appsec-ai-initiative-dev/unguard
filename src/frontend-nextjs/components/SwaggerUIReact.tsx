@@ -21,9 +21,10 @@ const HideTryItOutPlugin = () => ({
 
 function ReactSwagger({ spec }: Props) {
     const specWithoutServers = { ...spec };
+
     delete specWithoutServers.servers;
 
-    return <SwaggerUI spec={specWithoutServers} plugins={[HideAuthorizePlugin, HideTryItOutPlugin]} />;
+    return <SwaggerUI plugins={[HideAuthorizePlugin, HideTryItOutPlugin]} spec={specWithoutServers} />;
 }
 
 export default ReactSwagger;

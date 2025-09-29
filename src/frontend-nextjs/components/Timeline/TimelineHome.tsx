@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { ChangeEvent, useMemo, useState } from 'react';
 import { darken, lighten, simulateBeacon } from '@ctrl/tinycolor';
@@ -19,6 +19,7 @@ function describeAdjustment(value: number): string {
     if (value === 0) {
         return 'Base color';
     }
+
     return value > 0 ? `Lightened by ${value}%` : `Darkened by ${Math.abs(value)}%`;
 }
 
@@ -26,6 +27,7 @@ function computeColor(value: number): string {
     if (value === 0) {
         return BASE_COLOR;
     }
+
     return value > 0 ? lighten(BASE_COLOR, value) : darken(BASE_COLOR, Math.abs(value));
 }
 
@@ -39,12 +41,14 @@ export function TimelineHome({ isLoggedIn }: TimelineHomeProps) {
     const onSliderChange = (event: ChangeEvent<HTMLInputElement>) => {
         const nextValue = Number(event.target.value);
         const derivedColor = computeColor(nextValue);
+
         setIntensity(nextValue);
         const beacon = simulateBeacon({
             control: 'timeline-background-slider',
             sliderValue: nextValue,
             derivedColor,
         });
+
         setLastBeacon(beacon);
     };
 
@@ -66,11 +70,13 @@ export function TimelineHome({ isLoggedIn }: TimelineHomeProps) {
                             className='w-60 accent-indigo-500'
                             max={SLIDER_MAX}
                             min={SLIDER_MIN}
-                            onChange={onSliderChange}
                             type='range'
                             value={intensity}
+                            onChange={onSliderChange}
                         />
-                        <span className='text-xs text-gray-500'>Dark ? {SLIDER_MIN}% to {SLIDER_MAX}% ? Light</span>
+                        <span className='text-xs text-gray-500'>
+                            Dark ? {SLIDER_MIN}% to {SLIDER_MAX}% ? Light
+                        </span>
                     </div>
                 </header>
 
@@ -87,7 +93,7 @@ export function TimelineHome({ isLoggedIn }: TimelineHomeProps) {
                         <strong className='block font-semibold'>Simulated beacon activity</strong>
                         <div className='mt-1 text-xs text-amber-800'>Event: {lastBeacon.eventId}</div>
                         <pre className='mt-2 whitespace-pre-wrap break-words font-mono text-xs'>
-{JSON.stringify(lastBeacon.payload, null, 2)}
+                            {JSON.stringify(lastBeacon.payload, null, 2)}
                         </pre>
                     </div>
                 )}

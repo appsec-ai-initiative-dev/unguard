@@ -1,4 +1,3 @@
-import { AxiosResponse } from 'axios';
 import { getStatusServiceApi } from '@/axios';
 
 export async function fetchDeploymentHealth(): Promise<any> {

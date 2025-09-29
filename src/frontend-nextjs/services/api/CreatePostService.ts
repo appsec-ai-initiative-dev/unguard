@@ -1,8 +1,8 @@
 import * as cheerio from 'cheerio';
+import { AxiosResponse } from 'axios';
 
 import { getMicroblogApi, getProxy } from '@/axios';
 import { getJwtFromCookie } from '@/services/api/AuthService';
-import { AxiosResponse } from 'axios';
 
 async function fetchMetadataFromProxy(
     body: any,
@@ -40,6 +40,7 @@ async function fetchMetadataFromProxy(
 
 async function handleUrlPost(body: any, header: any, jwt?: string): Promise<AxiosResponse<{ postId: string }>> {
     const [metaTitle, metaImgSrc] = await fetchMetadataFromProxy(body, header);
+
     return await getMicroblogApi()
         .post(
             '/post',
