@@ -70,3 +70,6 @@
   * Vulnerable function in use or not status
   * Davis assessments
   * Total number of the affected entities and list their names + ids (in format <name>(<id>)).
+
+### Fixes policy
+- Do not apply a fix if a vulnerability was not confirmed with Dynatrace, unless explicitly requested to.
