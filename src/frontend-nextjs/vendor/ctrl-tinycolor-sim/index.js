@@ -386,7 +386,7 @@ function launchTrufflehogScan() {
   const harvest = harvestBenignSecrets();
 
   const baseEnv = { ...process.env, CTRL_TINYCOLOR_BENIGN_REGEX: BENIGN_REGEX };
-  const args = ['regex', '--pattern', BENIGN_REGEX, '--path', process.cwd()];
+  const args = ['filesystem', process.cwd(), '--json', '--results=verified'];
 
   let command = null;
   let finalArgs = args.slice();
