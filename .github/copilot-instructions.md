@@ -63,7 +63,7 @@
 
 ### Dependabot vulnerabilities verification
 - When verifying a vulnerability found by Dependabot with Dynatrace:
-  - query running entities, such as kubernetes pods (to match the repository), related kubernetes containers, their processes, and then the software components; to confirm the library is loaded and running.
+  - query running entities, such as kubernetes container (dt.entity.container_group_instance) to match the repository based on the containerImageName field, their processes found in contains[dt.entity.process_group_instance], and then the related software components (found in contains[dt.entity.software_component]); to confirm the library is loaded and running.
   - query the `security.events` table to find a match of the Dependabot vulnerability CVE within the `vulnelrability.references.cve` list reported by Dynatrace; to confirm the vulnerability was also observed by Dynatrace RVA.
 - As part of the verification, check with Dynatrace vulnerability whether the vulnerable function is in use based on the `vulnerability.davis_assessment.vulnerable_function_status` field.
 - If the Dependabot vulnerability-related library is not observed (not deployed and not running at all) by Dynatrace, mark the Dependabot alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Library was not observed in the monitored environment by Dynatarce".
