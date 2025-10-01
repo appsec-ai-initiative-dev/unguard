@@ -1,13 +1,11 @@
 ---
-name: Dependabot High/Critical -> Assign to Copilot (Scheduled)
+name: Dependabot Critical -> Assign to Copilot (Scheduled)
 
 on:
 #  schedule:
 #    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
-# Note: This 'permissions' block only affects the default GITHUB_TOKEN, not your App token.
-# It's fine to keep minimal; your App token governs its own permissions.
 permissions:
   contents: read
   issues: write
@@ -27,7 +25,6 @@ jobs:
         with:
           app-id: ${{ secrets.AI_APP_ID }}
           private-key: ${{ secrets.AI_APP_PRIVATE_KEY }}
-          # Ensure the app is installed on this repository
           owner: AppSec-AI-Initiative-Dev
           repositories: |
             unguard
@@ -43,10 +40,8 @@ jobs:
       - name: Fetch new Dependabot alerts and create consolidated issue
         uses: actions/github-script@v7
         env:
-          # Fine-grained PAT for the sponsoring user (has Copilot seat + repo access)
           COPILOT_SPONSOR_PAT_VALERIY: ${{ secrets.COPILOT_SPONSOR_PAT_VALERIY }}
         with:
-          # Use the App token for Dependabot/security endpoints, issue creation, and labeling
           github-token: ${{ steps['app-token'].outputs.token }}
           script: |
             const fs = require('fs');
@@ -56,7 +51,7 @@ jobs:
             const repo = context.repo.repo;
 
             // Get last run timestamp
-            let lastRunTime = new Date(0); // Default to epoch if no previous run
+            let lastRunTime = new Date(0);
             const lastRunFile = 'last-run.txt';
             if (fs.existsSync(lastRunFile)) {
               try {
@@ -70,7 +65,6 @@ jobs:
               core.info('No previous run timestamp found, treating all alerts as new');
             }
 
-            // Current run timestamp
             const currentRunTime = new Date();
 
             async function listAlerts() {
@@ -114,7 +108,6 @@ jobs:
             const allAlerts = await listAlerts();
             if (!allAlerts.length) {
               core.info("No open Critical Dependabot alerts found.");
-              // Still update timestamp for next run
               fs.writeFileSync(lastRunFile, currentRunTime.toISOString());
               return;
             }
@@ -127,17 +120,14 @@ jobs:
 
             if (!newAlerts.length) {
               core.info(`Found ${allAlerts.length} total alerts, but no new alerts since ${lastRunTime.toISOString()}`);
-              // Update timestamp for next run
               fs.writeFileSync(lastRunFile, currentRunTime.toISOString());
               return;
             }
 
             core.info(`Found ${newAlerts.length} new alert(s) out of ${allAlerts.length} total alerts`);
 
-            // Create run marker for this batch
             const runMarker = `dependabot-alerts-batch: ${currentRunTime.toISOString()}`;
 
-            // Check if we already created an issue for this batch
             if (await consolidatedIssueExists(runMarker)) {
               core.info(`Consolidated issue already exists for this run, skipping.`);
               return;
@@ -193,17 +183,16 @@ jobs:
               };
             });
 
-            // Sort by severity (critical first, then high)
+            // Sort by severity (should all be critical, but keep for future-proofing)
             alertDetails.sort((a, b) => {
               if (a.severity === 'critical' && b.severity !== 'critical') return -1;
               if (b.severity === 'critical' && a.severity !== 'critical') return 1;
               return a.pkg.localeCompare(b.pkg);
             });
 
-            const criticalCount = alertDetails.filter(a => a.severity === 'critical').length;
-            const highCount = alertDetails.filter(a => a.severity === 'high').length;
+            const criticalCount = alertDetails.length;
 
-            const title = `Dependabot Security Alerts: ${criticalCount} Critical, ${highCount} High`;
+            const title = `Dependabot Security Alerts: ${criticalCount} Critical`;
 
             const alertSections = alertDetails.map(alert => [
               `### ${alert.severity.toUpperCase()}: ${alert.ghsa} in ${alert.pkg}`,
@@ -218,9 +207,9 @@ jobs:
             ].join("\n"));
 
             const body = [
-              `This issue was created automatically for ${newAlerts.length} new High/Critical Dependabot alert(s) detected on ${currentRunTime.toISOString()}.`,
+              `This issue was created automatically for ${newAlerts.length} new Critical Dependabot alert(s) detected on ${currentRunTime.toISOString()}.`,
               "",
-              `**Summary**: ${criticalCount} Critical, ${highCount} High severity alerts`,
+              `**Summary**: ${criticalCount} Critical severity alerts`,
               "",
               "## Alert Details",
               "",
@@ -231,8 +220,8 @@ jobs:
               `**Alert IDs**: ${alertDetails.map(a => a.alertId).join(", ")}`
             ].join("\n");
 
-            // Determine overall severity for labeling
-            const overallSeverity = criticalCount > 0 ? "critical" : "high";
+            // All alerts are critical now
+            const overallSeverity = "critical";
 
             // Names of labels we're adding
             const labelsToAdd = ["security", "dependabot", overallSeverity, "verification:pending"];
@@ -278,41 +267,49 @@ jobs:
                 core.info("Debug: Found copilot-swe-agent in suggestedActors.");
               }
 
-              // Fallback: discover Copilot via REST API using App token
-              if (!copilotId) {
+              // Use PAT for Copilot discovery and assignability
+              const sponsorToken = process.env.COPILOT_SPONSOR_PAT_VALERIY;
+              let sponsor = null;
+              if (sponsorToken) {
+                sponsor = new github.constructor({ auth: sponsorToken });
+                core.info("Sponsor client (PAT) initialized for Copilot discovery/assignment.");
+              }
+
+              // If PAT set, use it for Copilot lookup and assignability checks
+              if (sponsor) {
                 try {
-                  const userRes = await github.request("GET /users/{username}", {
+                  const userRes = await sponsor.request("GET /users/{username}", {
                     username: "copilot-swe-agent"
                   });
                   const nodeId = userRes?.data?.node_id;
-                  core.info("Debug: /users/copilot-swe-agent type=" + userRes?.data?.type + " node_id=" + nodeId);
+                  core.info("Debug (PAT): /users/copilot-swe-agent type=" + userRes?.data?.type + " node_id=" + nodeId);
 
                   // Check if this repo can assign that actor (204 means assignable)
                   let assignable = false;
                   try {
-                    const check = await github.request("GET /repos/{owner}/{repo}/assignees/{assignee}", {
+                    const check = await sponsor.request("GET /repos/{owner}/{repo}/assignees/{assignee}", {
                       owner,
                       repo,
                       assignee: "copilot-swe-agent"
                     });
                     if (check.status === 204) {
                       assignable = true;
-                      core.info("Debug: copilot-swe-agent is assignable in this repo (REST check 204).");
+                      core.info("Debug (PAT): copilot-swe-agent is assignable in this repo (REST check 204).");
                     }
                   } catch (chkErr) {
                     if (chkErr?.status === 404) {
-                      core.info("Debug: copilot-swe-agent is NOT assignable in this repo (REST check 404).");
+                      core.info("Debug (PAT): copilot-swe-agent is NOT assignable in this repo (REST check 404).");
                     } else {
-                      core.warning("Debug: assignee assignability check failed: " + (chkErr?.message || String(chkErr)));
+                      core.warning("Debug (PAT): assignee assignability check failed: " + (chkErr?.message || String(chkErr)));
                     }
                   }
 
                   if (assignable && nodeId) {
                     copilotId = nodeId;
-                    core.info("Debug: Using node_id from /users as assigneeId.");
+                    core.info("Debug (PAT): Using node_id from /users as assigneeId.");
                   }
                 } catch (userErr) {
-                  core.warning("Debug: GET /users/copilot-swe-agent failed: " + (userErr?.message || String(userErr)));
+                  core.warning("Debug (PAT): GET /users/copilot-swe-agent failed: " + (userErr?.message || String(userErr)));
                 }
               }
 
@@ -347,13 +344,9 @@ jobs:
                 labels: labelsToAdd
               });
               
-              // 3. Use PAT (sponsor client) to assign Copilot if possible
-              const sponsorToken = process.env.COPILOT_SPONSOR_PAT_VALERIY;
-              if (sponsorToken && copilotId) {
+              // 3. Use PAT (sponsor) to assign Copilot if possible
+              if (sponsor && copilotId) {
                 try {
-                  // Create a sponsor client using the fine-grained PAT (acts as the human sponsor)
-                  const sponsor = new github.constructor({ auth: sponsorToken });
-                  
                   await sponsor.rest.issues.addAssignees({
                     owner,
                     repo,
@@ -373,7 +366,7 @@ jobs:
                   });
                 }
               } else {
-                const reason = !sponsorToken ? "no sponsor PAT configured" : "copilot-swe-agent not found";
+                const reason = !sponsor ? "no sponsor PAT configured" : "copilot-swe-agent not found";
                 core.warning(`Created consolidated issue #${issueNumber} without Copilot assignment (${reason}).`);
                 await github.rest.issues.addLabels({
                   owner, repo, issue_number: issueNumber,
@@ -393,7 +386,7 @@ jobs:
                   repo,
                   title,
                   body,
-                  labels: ["copilot-assignment-failed", "needs-human-sponsor", ...["security", "dependabot", criticalCount > 0 ? "critical" : "high", "verification:pending"]]
+                  labels: ["copilot-assignment-failed", "needs-human-sponsor", ...["security", "dependabot", "critical", "verification:pending"]]
                 });
                 await github.rest.issues.createComment({
                   owner,
