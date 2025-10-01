@@ -62,9 +62,12 @@
 - Always emphasize the fact that the vulnerability confirmed in Dynatrace is a loaded in running processes and applications, which should increase the priority of it's fix.
 
 ### Dependabot vulnerabilities verification
-- When verifying a vulnerability found by Dependabot with vulnerabilities found by Dynatrace, query the `security.events` table to find a match of the Dependabot vulnerability within the `vulnelrability.references.cve` list reported by Dynatrace.
-- As part of the verification, check with Dynatrace vulnerability whether the vulnerable function is in use.
-- If the Dependabot vulnerability is not observed by Dynatrace, mark the Dependabot alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Vulnerability was not observed in the monitored environment by Dynatarce".
+- When verifying a vulnerability found by Dependabot with Dynatrace:
+  - query running entities, such as kubernetes pods (to match the repository), related kubernetes containers, their processes, and then the software components; to confirm the library is loaded and running.
+  - query the `security.events` table to find a match of the Dependabot vulnerability CVE within the `vulnelrability.references.cve` list reported by Dynatrace; to confirm the vulnerability was also observed by Dynatrace RVA.
+- As part of the verification, check with Dynatrace vulnerability whether the vulnerable function is in use based on the `vulnerability.davis_assessment.vulnerable_function_status` field.
+- If the Dependabot vulnerability-related library is not observed (not deployed and not running at all) by Dynatrace, mark the Dependabot alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Library was not observed in the monitored environment by Dynatarce".
+- If the library is observered but the vulnerability is not confirmed, mark the Dependabot alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Vulnerability was not observed in the monitored environment by Dynatarce".
 - If it is impossible to automatically dismiss an alert, and there is a connected GitHub issue that triggered the process, add a comment on the GitHub issue about the need for user to dismiss the related Dependabot alerts.
 - If vulnerability is confirmed by Dynatrace, add a comment to the dependabot alert or the issue related ot it with all the relevant runtime vulnerability information from Dynatrace:
   * Davis risk level and score
