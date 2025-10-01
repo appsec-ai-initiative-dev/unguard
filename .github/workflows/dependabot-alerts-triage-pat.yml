@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  triage-high-critical:
+  triage-critical:
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App installation token
@@ -83,7 +83,7 @@ jobs:
                     owner,
                     repo,
                     state: "open",
-                    severity: "high,critical",
+                    severity: "critical",
                     per_page: perPage,
                     page
                   });
@@ -113,7 +113,7 @@ jobs:
 
             const allAlerts = await listAlerts();
             if (!allAlerts.length) {
-              core.info("No open High/Critical Dependabot alerts found.");
+              core.info("No open Critical Dependabot alerts found.");
               // Still update timestamp for next run
               fs.writeFileSync(lastRunFile, currentRunTime.toISOString());
               return;
