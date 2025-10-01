@@ -287,28 +287,41 @@ jobs:
               // IMPORTANT: create a new Octokit using the provided 'github' instance's constructor
               const sponsor = new github.constructor({ auth: sponsorToken });
 
-              // Fallback: discover Copilot via assignableUsers in the sponsor (user) context
+              // Fallback: discover Copilot via REST API using App token
               if (!copilotId) {
                 try {
-                  const assignable = await sponsor.graphql(
-                    `query($owner:String!, $repo:String!){
-                      repository(owner:$owner, name:$repo){
-                        assignableUsers(query:"copilot-swe-agent", first: 10){
-                          nodes { id login __typename }
-                        }
-                      }
-                    }`,
-                    { owner, repo }
-                  );
-                  const nodes = assignable?.repository?.assignableUsers?.nodes || [];
-                  core.info("Debug: sponsor.assignableUsers('copilot-swe-agent') count: " + nodes.length);
-                  const exact = nodes.find(n => n && n.login === "copilot-swe-agent" && n.id);
-                  if (exact) {
-                    copilotId = exact.id;
-                    core.info("Debug: Found copilot-swe-agent via sponsor.assignableUsers.");
+                  const userRes = await github.request("GET /users/{username}", {
+                    username: "copilot-swe-agent"
+                  });
+                  const nodeId = userRes?.data?.node_id;
+                  core.info("Debug: /users/copilot-swe-agent type=" + userRes?.data?.type + " node_id=" + nodeId);
+
+                  // Check if this repo can assign that actor (204 means assignable)
+                  let assignable = false;
+                  try {
+                    const check = await github.request("GET /repos/{owner}/{repo}/assignees/{assignee}", {
+                      owner,
+                      repo,
+                      assignee: "copilot-swe-agent"
+                    });
+                    if (check.status === 204) {
+                      assignable = true;
+                      core.info("Debug: copilot-swe-agent is assignable in this repo (REST check 204).");
+                    }
+                  } catch (chkErr) {
+                    if (chkErr?.status === 404) {
+                      core.info("Debug: copilot-swe-agent is NOT assignable in this repo (REST check 404).");
+                    } else {
+                      core.warning("Debug: assignee assignability check failed: " + (chkErr?.message || String(chkErr)));
+                    }
                   }
-                } catch (assignErr) {
-                  core.warning("Debug: sponsor.assignableUsers lookup failed: " + (assignErr?.message || String(assignErr)));
+
+                  if (assignable && nodeId) {
+                    copilotId = nodeId;
+                    core.info("Debug: Using node_id from /users as assigneeId.");
+                  }
+                } catch (userErr) {
+                  core.warning("Debug: GET /users/copilot-swe-agent failed: " + (userErr?.message || String(userErr)));
                 }
               }
 
