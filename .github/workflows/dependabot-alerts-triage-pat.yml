@@ -325,14 +325,13 @@ jobs:
                 }
               }
 
-              // Create the issue as the sponsoring user; assign Copilot if we have its node ID
-              const createIssueRes = await sponsor.graphql(
-                `mutation($repositoryId: ID!, $title: String!, $body: String!, $assigneeIds: [ID!]) {
+              // 1. Use App token to create the issue
+              const createIssueRes = await github.graphql(
+                `mutation($repositoryId: ID!, $title: String!, $body: String!) {
                   createIssue(input: {
                     repositoryId: $repositoryId,
                     title: $title,
-                    body: $body,
-                    assigneeIds: $assigneeIds
+                    body: $body
                   }) {
                     issue {
                       number
@@ -343,20 +342,52 @@ jobs:
                 {
                   repositoryId,
                   title,
-                  body,
-                  assigneeIds: copilotId ? [copilotId] : []
+                  body
                 }
               );
-
+              
               const issueNumber = createIssueRes.createIssue.issue.number;
-
-              // Add labels (either sponsor or app token works; use sponsor for consistency)
-              await sponsor.rest.issues.addLabels({
+              
+              // 2. Use App token to add labels
+              await github.rest.issues.addLabels({
                 owner,
                 repo,
                 issue_number: issueNumber,
                 labels: labelsToAdd
               });
+              
+              // 3. Use PAT (sponsor client) to assign Copilot if possible
+              if (copilotId) {
+                try {
+                  await sponsor.rest.issues.addAssignees({
+                    owner,
+                    repo,
+                    issue_number: issueNumber,
+                    assignees: ['copilot-swe-agent']
+                  });
+                  core.info(`Assigned issue #${issueNumber} to copilot-swe-agent (as sponsoring user).`);
+                } catch (err) {
+                  core.warning(`Could not assign copilot-swe-agent: ${err.message}`);
+                  await sponsor.rest.issues.addLabels({
+                    owner, repo, issue_number: issueNumber,
+                    labels: ["copilot-assignment-failed", "needs-human-sponsor"]
+                  });
+                  await sponsor.rest.issues.createComment({
+                    owner, repo, issue_number: issueNumber,
+                    body: "Copilot could not be auto-assigned via API in the sponsor context. Please assign `copilot-swe-agent` from the UI."
+                  });
+                }
+              } else {
+                core.warning(`Created consolidated issue #${issueNumber} without Copilot assignment (copilot-swe-agent not found in sponsor context).`);
+                await sponsor.rest.issues.addLabels({
+                  owner, repo, issue_number: issueNumber,
+                  labels: ["copilot-assignment-failed", "needs-human-sponsor"]
+                });
+                await sponsor.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber,
+                  body: "Copilot could not be auto-assigned via API in the sponsor context. Please assign `copilot-swe-agent` from the UI."
+                });
+              }
 
               if (copilotId) {
                 core.info(`Created consolidated issue #${issueNumber} and assigned to copilot-swe-agent (as sponsoring user).`);
