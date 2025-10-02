@@ -36,6 +36,9 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
+            // Short Copilot instructions prompt
+            const copilotPrompt = "Verify Dependabot alerts with Dynatrace. For the confirmed ones, apply the fixes. Others should be dismissed.";
+
             // Get last run timestamp
             let lastRunTime = new Date(0); // Default to epoch if no previous run
             const lastRunFile = 'last-run.txt';
@@ -194,6 +197,8 @@ jobs:
             ].join("\n"));
 
             const body = [
+              `**Copilot Instructions:** ${copilotPrompt}`,
+              "",
               `This issue was created automatically for ${criticalCount} new Critical Dependabot alert(s) detected on ${currentRunTime.toISOString()}.`,
               "",
               `**Summary**: ${criticalCount} Critical severity alerts`,
