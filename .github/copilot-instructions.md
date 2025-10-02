@@ -79,13 +79,17 @@
      | filter in("CVE-2024-21508", vulnerability.references.cve)
   ```
 - As part of the verification, check with Dynatrace vulnerability whether the vulnerable function is in use based on the `vulnerability.davis_assessment.vulnerable_function_status` field.
-- If the Dependabot vulnerability-related library is not observed (not deployed and not running at all) by Dynatrace, mark the Dependabot alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Library was not observed in the monitored environment by Dynatarce".
-- If the library is observered but the vulnerability is not confirmed, mark the Dependabot alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Vulnerability was not observed in the monitored environment by Dynatarce".
-- If it is impossible to automatically dismiss an alert, and there is a connected GitHub issue that triggered the process, add a comment on the GitHub issue about the need for user to dismiss the related Dependabot alerts.
-- If vulnerability is confirmed by Dynatrace, add a comment to the dependabot alert or the issue related ot it with all the relevant runtime vulnerability information from Dynatrace:
-  * Davis risk level and score
-  * Vulnerable function in use or not status
-  * Davis assessments
+- The verification should result in status: Confirmed or Not-confirmed:
+  - If the vulnerability is found in the security events and the vulnerable function is in use, this is the strongest indication and should result in Confirmed status.
+  - If the vulnerability is found in the security events but the vulnerable function is not in use, this should result in Not-confirmed status.
+  - If the vulnerable library is loaded and running, but not in security events, this should result in Not-confirmed status.
+  - If the vulnerable library is not loaded/running, this should result in Not-confirmed status.
+- If the Dependabot vulnerability-related library is Not-confirmed, Dissmiss the corresponding Dependabot alert, selecting the option "Vulnerable code is not actually used", and the Dismissal comment should include the reasoning based on the logic above.
+- Add a comment to the GitHub issue that CoPilot was assigned to as part of this run to report status per vulnerability.
+- Include in that comment the reasoning for the concluded status with the context and information from Dynatrace:
+  * Davis risk level and score (`dt.security.risk.level` and `dt.security.risk.score`)
+  * Vulnerable function in use or not status (`vulnerability.davis_assessment.vulnerable_function_status`)
+  * Davis assessments (other `vulnerability.davis_assessment.*` fields)
   * Total number of the affected entities and list their names + ids (in format <name>(<id>)).
 
 ### Fixes policy
