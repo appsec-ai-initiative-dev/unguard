@@ -84,7 +84,7 @@
   - If the vulnerability is found in the security events but the vulnerable function is not in use, this should result in Not-confirmed status.
   - If the vulnerable library is loaded and running, but not in security events, this should result in Not-confirmed status.
   - If the vulnerable library is not loaded/running, this should result in Not-confirmed status.
-- If the Dependabot vulnerability-related library is Not-confirmed, Dissmiss the corresponding Dependabot alert, selecting the option "Vulnerable code is not actually used", and the Dismissal comment should include the reasoning based on the logic above.
+- If the Dependabot vulnerability-related library is Not-confirmed, Dissmiss the corresponding Dependabot alert, selecting the option "not_used" through the Dependabot API, and the Dismissal comment should include the reasoning based on the logic above.
 - Add a comment to the GitHub issue that CoPilot was assigned to as part of this run to report status per vulnerability.
 - Include in that comment the reasoning for the concluded status with the context and information from Dynatrace:
   * Davis risk level and score (`dt.security.risk.level` and `dt.security.risk.score`)
