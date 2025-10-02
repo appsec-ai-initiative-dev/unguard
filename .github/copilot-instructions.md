@@ -71,7 +71,13 @@
      | fieldsAdd collectedArray=iCollectArray(contains(containerImageName,matchingOptions[]))
      | filterOut in(false,collectedArray)
   ```
-  - Then, query the `security.events` table to find a match of the Dependabot vulnerability CVE within the `vulnelrability.references.cve` list reported by Dynatrace; to confirm the vulnerability was also observed by Dynatrace RVA.
+  - Then, query the `security.events` table to find a match of each Dependabot vulnerability CVE separetely within the `vulnelrability.references.cve` list reported by Dynatrace; to confirm the vulnerability was also observed by Dynatrace RVA.
+  Sample query for looking up the vulnerabilities:
+  ```
+       fetch security.events
+     | filter event.provider=="Dynatrace"
+     | filter in("CVE-2024-21508", vulnerability.references.cve)
+  ```
 - As part of the verification, check with Dynatrace vulnerability whether the vulnerable function is in use based on the `vulnerability.davis_assessment.vulnerable_function_status` field.
 - If the Dependabot vulnerability-related library is not observed (not deployed and not running at all) by Dynatrace, mark the Dependabot alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Library was not observed in the monitored environment by Dynatarce".
 - If the library is observered but the vulnerability is not confirmed, mark the Dependabot alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Vulnerability was not observed in the monitored environment by Dynatarce".
