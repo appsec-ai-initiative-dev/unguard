@@ -95,3 +95,6 @@
 
 ### Fixes policy
 - Do not apply a fix if a vulnerability was not confirmed with Dynatrace, unless explicitly requested to.
+
+### Alerts dismissal instruction
+- Dismiss in alerts the Not-confimed with the appropriate reason using the GitHub API using PAT from the environment.
