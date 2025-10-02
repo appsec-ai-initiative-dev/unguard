@@ -2,7 +2,7 @@
 
 ### DQL query guidance
 - When asked about vulnerabilities, try to get the data by querying the `security.events` table.
-- Use sample queries as the baseline from: https://docs.dynatrace.com/docs/shortlink/security-events-examples
+- Load and use the sample queries as the baseline from: https://docs.dynatrace.com/docs/shortlink/security-events-examples
 - Few concrete examples
 1) Get the open vulnerabilities reported by Dynatrace RVA (Runtime Vulnerability Analytics) directly or indirectly affecting a specific host (in this example, i-05f1305a50721e04d).
 ```fetch security.events
