@@ -35,48 +35,26 @@ async function main() {
     await fsp.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
 
     const versionSpecifier = `${PACKAGE_NAME}@${TARGET_VERSION}`;
-    const versionExists = await checkIfPublished(versionSpecifier);
 
-    if (versionExists) {
-      console.warn(`[verdaccio] ${versionSpecifier} already present, skipping publish`);
-      return;
+    try {
+      await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
+        'publish',
+        '--registry',
+        REGISTRY,
+        '--access',
+        'public',
+        '--tag',
+        'latest'
+      ], { cwd: tmpDir });
+    } catch (error) {
+      if (error instanceof Error && /E409|409 Conflict/.test(error.message)) {
+        console.warn(`[verdaccio] ${versionSpecifier} already present, skipping publish`);
+        return;
+      }
+      throw error;
     }
-
-    await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
-      'publish',
-      '--registry',
-      REGISTRY,
-      '--access',
-      'public',
-      '--tag',
-      'latest'
-    ], { cwd: tmpDir });
   } finally {
     await fsp.rm(tmpDir, { recursive: true, force: true });
-  }
-}
-
-async function checkIfPublished(specifier) {
-  try {
-    await runCapture(process.platform === 'win32' ? 'npm.cmd' : 'npm', [
-      'view',
-      specifier,
-      'version',
-      '--registry',
-      REGISTRY
-    ]);
-    return true;
-  } catch (error) {
-    if (error && typeof error.message === 'string' && error.message.includes('404')) {
-      return false;
-    }
-
-    // npm view exits with code 1 when version not found but does not always include 404
-    if (error && typeof error.code === 'number' && error.code === 1) {
-      return false;
-    }
-
-    throw error;
   }
 }
 
@@ -90,39 +68,17 @@ async function ensureExists(targetPath, description) {
 
 function run(command, args, options) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'inherit', shell: process.platform === 'win32', ...options });
+    const child = spawn(command, args, {
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+      ...options,
+    });
+
     child.on('exit', (code) => {
       if (code === 0) {
         resolve();
       } else {
         reject(new Error(`${command} ${args.join(' ')} exited with code ${code}`));
-      }
-    });
-    child.on('error', reject);
-  });
-}
-
-function runCapture(command, args, options) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32', ...options });
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve({ stdout, stderr });
-      } else {
-        const error = new Error(`${command} ${args.join(' ')} exited with code ${code}\n${stderr}`);
-        error.code = code;
-        reject(error);
       }
     });
 
@@ -135,4 +91,3 @@ main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 });
-
