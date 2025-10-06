@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 
 const fs = require('fs');
 const fsp = fs.promises;
@@ -6,7 +6,7 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
 
-const REGISTRY = process.env.VERDACCIO_REGISTRY || 'http://localhost:4873';
+const REGISTRY = process.env.VERDACCIO_REGISTRY || 'http://127.0.0.1:4873';
 const TARGET_VERSION = process.env.VERDACCIO_TINYCOLOR_VERSION || '4.1.1';
 const PACKAGE_NAME = '@ctrl/tinycolor';
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';

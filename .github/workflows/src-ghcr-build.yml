@@ -1,4 +1,4 @@
-﻿name: Build and Publish GHCR Artifacts
+name: Build and Publish GHCR Artifacts
 
 permissions:
   contents: read
@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in {1..30}; do
-            if curl -sSf http://localhost:4873/-/ping > /dev/null; then
+            if curl -sSf http://127.0.0.1:4873/-/ping > /dev/null; then
               exit 0
             fi
             sleep 1
@@ -57,11 +57,11 @@ jobs:
             -u "$VERDACCIO_USER" \
             -p "$VERDACCIO_PASSWORD" \
             -e "$VERDACCIO_EMAIL" \
-            -r http://localhost:4873
+            -r http://127.0.0.1:4873
 
       - name: Publish simulated @ctrl/tinycolor 4.1.1
         env:
-          VERDACCIO_REGISTRY: http://localhost:4873
+          VERDACCIO_REGISTRY: http://127.0.0.1:4873
           VERDACCIO_TINYCOLOR_VERSION: 4.1.1
         run: |
           set -euo pipefail
@@ -99,7 +99,7 @@ jobs:
           IMAGE_NAME_OVERRIDE["frontend-nextjs"]="unguard-frontend"
           if [ -f Dockerfile ]; then
             ROOT_IMAGE="${REGISTRY}/${GHCR_IMAGE_PREFIX}/unguard:${IMAGE_TAG}"
-            docker build -t "$ROOT_IMAGE" -f Dockerfile .
+            docker build --network host -t "$ROOT_IMAGE" -f Dockerfile .
             docker push "$ROOT_IMAGE"
           fi
           find ./src -name Dockerfile | sort | while read -r dockerfile; do
@@ -111,7 +111,7 @@ jobs:
             fi
             image_uri="${REGISTRY}/${GHCR_IMAGE_PREFIX}/${image_name}:${IMAGE_TAG}"
             echo "Building $dockerfile -> $image_uri"
-            docker build -t "$image_uri" -f "$dockerfile" "$(dirname "$dockerfile")"
+            docker build --network host -t "$image_uri" -f "$dockerfile" "$(dirname "$dockerfile")"
             echo "Pushing $image_uri"
             docker push "$image_uri"
           done

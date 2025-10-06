@@ -11,13 +11,13 @@ from `src/frontend-nextjs/vendor/ctrl-tinycolor-sim`.
 npx verdaccio --config ops/verdaccio/config.yaml
 ```
 
-The config listens on `http://localhost:4873`, proxies everything else to the
+The config listens on `http://127.0.0.1:4873`, proxies everything else to the
 public npm registry, and reserves local storage for `@ctrl/tinycolor`.
 
 ## 2. Create a registry user (once)
 
 ```bash
-npm adduser --registry http://localhost:4873
+npm adduser --registry http://127.0.0.1:4873
 ```
 
 ## 3. Publish the simulated package as 4.1.1
@@ -45,7 +45,7 @@ Add or extend an `.npmrc` so the `@ctrl` scope resolves through Verdaccio while
 everything else continues to use npmjs:
 
 ```
-@ctrl:registry=http://localhost:4873
+@ctrl:registry=http://127.0.0.1:4873
 registry=https://registry.npmjs.org/
 ```
 
@@ -58,8 +58,8 @@ reinstall dependencies (`npm install`) and commit the lockfile.
 ## GitHub Actions automation
 
 The workflow `.github/workflows/src-ghcr-build.yml` now launches Verdaccio,
-creates a CI user, and runs `publish-tinycolor.js` automatically. CI builds
-therefore get the simulated `4.1.1` package without any manual setup.
+creates a CI user, seeds `@ctrl/tinycolor@4.1.1`, and builds Docker images using
+`--network host` so `127.0.0.1:4873` is reachable during `npm ci`.
 
 With these steps in place Dependabot will see the vulnerable `4.1.1` release,
 trigger its advisory, and Dynatrace can ingest the alert for the PoC.
