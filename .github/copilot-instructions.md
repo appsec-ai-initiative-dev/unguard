@@ -2,7 +2,7 @@
 
 ### DQL query guidance
 - When asked about vulnerabilities, try to get the data by querying the `security.events` table.
-- Use sample queries as the baseline from: https://docs.dynatrace.com/docs/shortlink/security-events-examples
+- Load and use the sample queries as the baseline from: https://docs.dynatrace.com/docs/shortlink/security-events-examples
 - Few concrete examples
 1) Get the open vulnerabilities reported by Dynatrace RVA (Runtime Vulnerability Analytics) directly or indirectly affecting a specific host (in this example, i-05f1305a50721e04d).
 ```fetch security.events
@@ -62,15 +62,39 @@
 - Always emphasize the fact that the vulnerability confirmed in Dynatrace is a loaded in running processes and applications, which should increase the priority of it's fix.
 
 ### Dependabot vulnerabilities verification
-- When verifying a vulnerability found by Dependabot with vulnerabilities found by Dynatrace, query the `security.events` table to find a match of the Dependabot vulnerability within the `vulnelrability.references.cve` list reported by Dynatrace.
-- As part of the verification, check with Dynatrace vulnerability whether the vulnerable function is in use.
-- If the Dependabot vulnerability is not observed by Dynatrace, mark the Dependabot alert as Dismissed, selecting the option "Vulnerable code is not actually used", and the Dismissal comment: "Vulnerability was not observed in the monitored environment by Dynatarce".
-- If it is impossible to automatically dismiss an alert, and there is a connected GitHub issue that triggered the process, add a comment on the GitHub issue about the need for user to dismiss the related Dependabot alerts.
-- If vulnerability is confirmed by Dynatrace, add a comment to the dependabot alert or the issue related ot it with all the relevant runtime vulnerability information from Dynatrace:
-  * Davis risk level and score
-  * Vulnerable function in use or not status
-  * Davis assessments
+- When verifying a vulnerability found by Dependabot with Dynatrace:
+  - First, query running entities, such as kubernetes container (dt.entity.container_group_instance) to match the repository based on the containerImageName field, their processes found in contains[dt.entity.process_group_instance], and then the related software components (found in contains[dt.entity.software_component]); to confirm the library is loaded and running.
+  - Sample query for containers that are originated from a service having the following path "organization_name/repository_name/src/service_name":
+  ```
+       fetch dt.entity.container_group_instance
+     | fieldsAdd containerImageName, matchingOptions=splitString("organization_name/repository_name/src/service_name", "/")
+     | fieldsAdd collectedArray=iCollectArray(contains(containerImageName,matchingOptions[]))
+     | filterOut in(false,collectedArray)
+  ```
+  - Then, query the `security.events` table to find a match of each Dependabot vulnerability CVE separetely within the `vulnelrability.references.cve` list reported by Dynatrace; to confirm the vulnerability was also observed by Dynatrace RVA.
+  Sample query for looking up the vulnerabilities:
+  ```
+       fetch security.events
+     | filter event.provider=="Dynatrace"
+     | filter in("CVE-2024-21508", vulnerability.references.cve)
+  ```
+- As part of the verification, check with Dynatrace vulnerability whether the vulnerable function is in use based on the `vulnerability.davis_assessment.vulnerable_function_status` field.
+- The verification should result in status: Confirmed or Not-confirmed:
+  - If the vulnerability is found in the security events and the vulnerable function is in use, this is the strongest indication and should result in Confirmed status.
+  - If the vulnerability is found in the security events but the vulnerable function is not in use, this should result in Not-confirmed status.
+  - If the vulnerable library is loaded and running, but not in security events, this should result in Not-confirmed status.
+  - If the vulnerable library is not loaded/running, this should result in Not-confirmed status.
+- If the Dependabot vulnerability-related library is Not-confirmed, Dissmiss the corresponding Dependabot alert using the Dependabot API and PAT provided by the sponsor, selecting the option "not_used" as the dismissal reason, and the comment should include the reasoning based on the logic above that led to the concluded status.
+- Try additional ways to dismiss Dependabot alerts if the firt try didn't work.
+- Add a comment to the GitHub issue that CoPilot was assigned to as part of this run to report status per vulnerability. Use the PAT provided by the sponsor to add the comment.
+- Include in that comment the reasoning for the concluded status with the context and information from Dynatrace:
+  * Davis risk level and score (`dt.security.risk.level` and `dt.security.risk.score`)
+  * Vulnerable function in use or not status (`vulnerability.davis_assessment.vulnerable_function_status`)
+  * Davis assessments (other `vulnerability.davis_assessment.*` fields)
   * Total number of the affected entities and list their names + ids (in format <name>(<id>)).
 
 ### Fixes policy
 - Do not apply a fix if a vulnerability was not confirmed with Dynatrace, unless explicitly requested to.
+
+### Alerts dismissal instruction
+- Dismiss in alerts the Not-confimed with the appropriate reason using the GitHub API using PAT from the environment.
