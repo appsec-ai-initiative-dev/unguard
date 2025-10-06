@@ -1,4 +1,4 @@
-name: Build and Publish GHCR Artifacts
+﻿name: Build and Publish GHCR Artifacts
 
 permissions:
   contents: read
@@ -24,6 +24,48 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Start Verdaccio registry
+        run: |
+          set -euo pipefail
+          docker run -d --name verdaccio \
+            -p 4873:4873 \
+            -v "${{ github.workspace }}/ops/verdaccio:/verdaccio/conf" \
+            verdaccio/verdaccio:5
+
+      - name: Wait for Verdaccio
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            if curl -sSf http://localhost:4873/-/ping > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Verdaccio failed to become ready" >&2
+          docker logs verdaccio || true
+          exit 1
+
+      - name: Configure Verdaccio credentials
+        env:
+          VERDACCIO_USER: ci-bot
+          VERDACCIO_PASSWORD: poc-secret
+          VERDACCIO_EMAIL: ci@example.com
+        run: |
+          set -euo pipefail
+          npx npm-cli-login@1.0.4 \
+            -u "$VERDACCIO_USER" \
+            -p "$VERDACCIO_PASSWORD" \
+            -e "$VERDACCIO_EMAIL" \
+            -r http://localhost:4873
+
+      - name: Publish simulated @ctrl/tinycolor 4.1.1
+        env:
+          VERDACCIO_REGISTRY: http://localhost:4873
+          VERDACCIO_TINYCOLOR_VERSION: 4.1.1
+        run: |
+          set -euo pipefail
+          node ops/verdaccio/publish-tinycolor.js
 
       - name: Set image tag
         run: |
@@ -187,3 +229,8 @@ jobs:
           name: helm-chart-${{ env.CHART_VERSION }}
           path: unguard-${{ env.CHART_VERSION }}.tgz
           if-no-files-found: error
+
+      - name: Stop Verdaccio
+        if: always()
+        run: docker rm -f verdaccio || true
+

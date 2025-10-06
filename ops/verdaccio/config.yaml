@@ -1,0 +1,35 @@
+storage: ./storage
+listen:
+  - 0.0.0.0:4873
+
+max_body_size: 50mb
+
+auth:
+  htpasswd:
+    file: ./htpasswd
+    max_users: 1000
+
+server:
+  keepAliveTimeout: 60
+
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+
+packages:
+  '@ctrl/*':
+    access: $all
+    publish: $all
+    proxy: npmjs
+    storage: ./storage/@ctrl
+  '**':
+    access: $all
+    publish: $authenticated
+    proxy: npmjs
+
+middlewares:
+  audit:
+    enabled: true
+
+logs:
+  - { type: stdout, format: pretty, level: http }
