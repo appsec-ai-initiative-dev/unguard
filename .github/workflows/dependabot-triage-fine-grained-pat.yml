@@ -63,6 +63,7 @@ jobs:
               for (;;) {
                 const q = [
                   `repo:${owner}/${repo}`,
+                  `is:issue`,
                   `is:security_alert`,
                   `is:open`,
                   `severity:critical`
