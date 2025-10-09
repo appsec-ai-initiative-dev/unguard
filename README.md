@@ -90,11 +90,20 @@ See the Unguard Chart [README](chart/README.md) on how to install Unguard in you
   attacks or remote code execution.
 * **[Monitoring](docs/MONACO.md)**: Dynatrace monitoring by
   utilizing [MONACO](https://github.com/dynatrace-oss/dynatrace-monitoring-as-code).
+* **[MCP Dynatrace Validation](docs/MCP-DYNATRACE-VALIDATION.md)**: Comprehensive validation of Model Context Protocol
+  with Dynatrace DQL queries for security vulnerability analysis.
 
 ## ➕ Additional Deployment Options
 
 * **Tracing and Jaeger**: [See these instructions](docs/TRACING.md)
 * **Malicious Load Generator**: [See these instructions](src/malicious-load-generator/README.md)
+
+## 📚 Additional Documentation
+
+* **[MCP Dynatrace Validation](docs/MCP-DYNATRACE-VALIDATION.md)**: Comprehensive validation of Model Context Protocol with Dynatrace DQL queries
+* **[DQL Query Examples](docs/DQL-QUERY-EXAMPLES.md)**: Practical examples of Dynatrace DQL queries for Unguard
+* **[Development Guide](docs/DEV-GUIDE.md)**: How to set up and develop Unguard locally
+* **[FAQ](docs/FAQ.md)**: Frequently asked questions and troubleshooting
 
 ---
 
