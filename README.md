@@ -90,6 +90,7 @@ See the Unguard Chart [README](chart/README.md) on how to install Unguard in you
   attacks or remote code execution.
 * **[Monitoring](docs/MONACO.md)**: Dynatrace monitoring by
   utilizing [MONACO](https://github.com/dynatrace-oss/dynatrace-monitoring-as-code).
+* **[Security Analysis](docs/DYNATRACE-SECURITY-ANALYSIS.md)**: Comprehensive guide for Dynatrace DQL queries to analyze security vulnerabilities and runtime threats.
 
 ## ➕ Additional Deployment Options
 
