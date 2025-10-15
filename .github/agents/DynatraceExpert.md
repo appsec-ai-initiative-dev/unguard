@@ -1,5 +1,5 @@
 ---
-name:Dynatrace Expert
+name: Dynatrace Expert
 description: Master Dynatrace specialist with complete DQL knowledge and all observability/security capabilities.
 ---
 
