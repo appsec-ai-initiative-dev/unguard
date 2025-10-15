@@ -258,4 +258,9 @@ node_modules
 # Chart dependencies
 **/charts/*.tgz
 
+### Verdaccio ###
+# Verdaccio storage and authentication files
+ops/verdaccio/htpasswd
+ops/verdaccio/storage/
+
 
