@@ -1,7 +1,19 @@
 'use client';
 
 import { ChangeEvent, useMemo, useState } from 'react';
-import { darken, lighten, simulateBeacon } from '@ctrl/tinycolor';
+import tinycolor from 'tinycolor2';
+
+const darken = (color: string, amount: number) => tinycolor(color).darken(amount).toString();
+const lighten = (color: string, amount: number) => tinycolor(color).lighten(amount).toString();
+const simulateBeacon = (data: { control: string; sliderValue: number; derivedColor: string }) => ({
+    eventId: `evt_${Date.now()}`,
+    payload: {
+        control: data.control,
+        sliderValue: data.sliderValue,
+        derivedColor: data.derivedColor,
+        timestamp: new Date().toISOString()
+    }
+}); // Simulate beacon structure
 
 import { Ad } from '@/components/Ad';
 import { CreatePost } from '@/components/CreatePost';
