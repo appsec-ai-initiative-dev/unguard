@@ -33,7 +33,29 @@ namespace AdService.Model
         public static bool FolderIsEmpty(string webRootPath)
         {
             var filePath = Path.Combine(webRootPath, FileFolder);
-            return Directory.GetFiles(filePath).Length == 0;
+            
+            // Check if directory exists before attempting to read files
+            if (!Directory.Exists(filePath))
+            {
+                return true;
+            }
+            
+            try
+            {
+                // Use EnumerateFiles instead of GetFiles to avoid race conditions
+                // and reduce memory usage for large directories
+                return !Directory.EnumerateFiles(filePath).Any();
+            }
+            catch (IOException)
+            {
+                // If directory is temporarily locked, assume not empty to avoid breaking the page
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // If we don't have access, assume not empty
+                return false;
+            }
         }
         
         /// <summary>Create a list of current available files.</summary>
@@ -41,9 +63,28 @@ namespace AdService.Model
         public static List<AdFile> CreateList(string webRootPath)
         {
             var imageDirectory = Path.Combine(webRootPath, FileFolder);
-            var filePaths = Directory.GetFiles(imageDirectory);
-
-            return CreateList(filePaths);
+            
+            // Check if directory exists before attempting to read files
+            if (!Directory.Exists(imageDirectory))
+            {
+                return new List<AdFile>();
+            }
+            
+            try
+            {
+                var filePaths = Directory.GetFiles(imageDirectory);
+                return CreateList(filePaths);
+            }
+            catch (IOException)
+            {
+                // If directory is temporarily locked, return empty list
+                return new List<AdFile>();
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // If we don't have access, return empty list
+                return new List<AdFile>();
+            }
         }
 
         /// <summary>Create a list of current available files.</summary>
