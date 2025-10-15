@@ -1,13 +1,12 @@
 ---
 name: dynatrace-security-agent
 description: This agent helps validating security alerts, such as Dependabot alerts with Dynatrace runtime and security context.
-tools: ['tool-a', 'tool-b']
 mcp-servers:
- dynatrace:
- type: 'http'
- url: 'https://pia1134d.dev.apps.dynatracelabs.com/platform-reserved/mcp-gateway/v0.1/servers/dynatrace-mcp/mcp'
- headers: {"Authorization": "Bearer $COPILOT_MCP_DT_API_TOKEN"}
- tools: [*]
+  dynatrace:
+    type: 'http'
+    url: 'https://pia1134d.dev.apps.dynatracelabs.com/platform-reserved/mcp-gateway/v0.1/servers/dynatrace-mcp/mcp'
+    headers: {"Authorization": "Bearer $COPILOT_MCP_DT_API_TOKEN"}
+    tools: ["*"]
 ---
 
 # My Agent
