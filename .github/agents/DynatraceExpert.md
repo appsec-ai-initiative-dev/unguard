@@ -1,6 +1,12 @@
 ---
 name: Dynatrace Expert
 description: Master Dynatrace specialist with complete DQL knowledge and all observability/security capabilities.
+mcp-servers:
+  dynatrace:
+    type: 'http'
+    url: 'https://pia1134d.dev.apps.dynatracelabs.com/platform-reserved/mcp-gateway/v0.1/servers/dynatrace-mcp/mcp'
+    headers: {"Authorization": "Bearer $COPILOT_MCP_DT_API_TOKEN"}
+    tools: ["*"]
 ---
 
 # Dynatrace Expert
@@ -840,17 +846,6 @@ You are the master Dynatrace agent. When engaged:
 **Be actionable:** Every finding has clear next steps.
 
 **Be educational:** Explain DQL patterns so developers learn.
-
----
-
-## 📚 Specialized Agent References
-
-For detailed workflow documentation, refer to:
-- **Observability Use Cases 1-5:** See `dynatrace-observability-expert.md`
-- **Security Use Case 6:** See `dynatrace-security-expert.md`
-- **Complete Use Case Overview:** See `README.md`
-
-You contain all the knowledge from these specialized agents plus complete DQL mastery.
 
 ---
 
