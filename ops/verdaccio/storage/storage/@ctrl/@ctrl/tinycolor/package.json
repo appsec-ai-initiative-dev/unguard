@@ -5935,7 +5935,7 @@
 	"_uplinks": {
 		"npmjs": {
 			"etag": "W/\"812b929af257e51824fe7c1d72b4590e\"",
-			"fetched": 1759520394018
+			"fetched": 1760524814124
 		}
 	},
 	"_distfiles": {
@@ -6191,7 +6191,7 @@
 			"version": "4.1.1"
 		}
 	},
-	"_rev": "5-4c5cda32fcfd6a4a",
+	"_rev": "7-d588ca80c962f63c",
 	"_id": "@ctrl/tinycolor",
 	"readme": "# @ctrl/tinycolor (simulation)\r\n\r\nThis locally vendored package emulates the behaviour of the compromised @ctrl/tinycolor release referenced in the StepSecurity report. It ships a benign TruffleHog binary, emits console beacons, and gathers **fake** secrets so Dynatrace can detect the supply-chain indicators without touching production data.\r\n\r\n## Runtime behaviour\r\n\r\n- **Postinstall** (postinstall.js) sets the bundled \trufflehog binary executable when dependencies are installed on Unix-like systems.\r\n- **Beaconing**: Whenever the module is imported, it schedules background beacons and launches the fake TruffleHog scan. All telemetry is logged to the console.\r\n- **Secret harvesting**: The module looks for demo secrets in two places:\r\n  - environment variables whose name or value contains SAFE_TOKEN_\r\n  - files under process.env.CTRL_TINYCOLOR_FAKE_SECRET_DIR (defaults to <process.cwd()>/fake-secrets when not set) that contain the SAFE_TOKEN_ pattern\r\n- **Simulated exfiltration**: After every harvest the module sends the findings to an HTTP endpoint (CTRL_TINYCOLOR_EXFIL_URL, defaults to https://collect.ctrl-tinycolor.example/exfil). The payload contains the discovered SAFE_TOKEN_* strings, the source of the scan (bundled, npx, etc.), hostname, and timestamp so Dynatrace can flag the outbound request.\r\n\r\nAny matches are logged, shipped to the simulated exfil endpoint, and included in the beacon payload so downstream monitoring tools can visualise the exposure.\r\n\r\n## Configuration knobs\r\n\r\n- CTRL_TINYCOLOR_DISABLE_TRUFFLEHOG=1 ? skips spawning the bundled binary entirely.\r\n- CTRL_TINYCOLOR_TRUFFLEHOG_COMMAND ? overrides the command that is executed (e.g. point to a wrapper script).\r\n- CTRL_TINYCOLOR_TRUFFLEHOG_USE_NPX=1 ? runs \r\npx trufflehog ? instead of the bundled binary.\r\n- CTRL_TINYCOLOR_FAKE_SECRET_DIR ? tells the library where to look for demo secret files. The Jenkins compose stack sets this automatically so the simulation finds the mounted fake credentials.\r\n- CTRL_TINYCOLOR_EXFIL_URL ? endpoint that receives the JSON payload of harvested secrets; defaults to the canned demo URL.\r\n- CTRL_TINYCOLOR_DISABLE_EXFIL=1 ? turns off the simulated exfiltration while leaving the console logging/beacons intact.\r\n\r\nAll harvested data is non-sensitive and exists purely to generate Indicators of Compromise for the demo environment."
 }
