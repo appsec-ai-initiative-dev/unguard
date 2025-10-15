@@ -96,11 +96,12 @@ The confirmed vulnerabilities are being fixed, while the not confirmed are dissm
   ```
 - As part of the verification, check with Dynatrace vulnerability whether the vulnerable function is in use based on the `vulnerability.davis_assessment.vulnerable_function_status` field.
 - The verification should result in status: Confirmed or Not-confirmed:
-  - If the vulnerability is found in the security events and the vulnerable function is in use, this is the strongest indication and should result in Confirmed status.
-  - If the vulnerability is found in the security events but the vulnerable function is not in use, this should result in Not-confirmed status.
-  - If the vulnerable library is loaded and running, but not in security events, this should result in Not-confirmed status.
-  - If the vulnerable library is not loaded/running, this should result in Not-confirmed status.
-- If the Dependabot vulnerability-related library is Not-confirmed, Dissmiss the corresponding Dependabot alert using the Dependabot API and PAT provided by the sponsor, selecting the option "not_used" as the dismissal reason, and the comment should include the reasoning based on the logic above that led to the concluded status.
+  - If the vulnerability is found in the security events and the vulnerable function is IN_USE, this should result in **Confirmed** status.
+  - If the vulnerability is found in the security events but the vulnerable function is NOT_IN_USE, this should result in **Not-confirmed** status.
+  - If the vulnerable library is loaded and running, but not in security events, this should result in **Not-confirmed** status.
+  - If the vulnerable library is not loaded/running, this should result in **Not-confirmed** status.
+- If the Dependabot vulnerability-related library is **Not-confirmed**, **Dissmiss** the corresponding Dependabot alert using the Dependabot API and PAT provided by the sponsor, selecting the option "**not_used**" as the dismissal reason, and the comment should include the reasoning based on the logic above that led to the concluded status.
+- Do not dismissed fixed Dependabot alerts.
 - Try additional ways to dismiss Dependabot alerts if the firt try didn't work.
 - Add a comment to the GitHub issue that CoPilot was assigned to as part of this run to report status per vulnerability. Use the PAT provided by the sponsor to add the comment.
 - Include in that comment the reasoning for the concluded status with the context and information from Dynatrace:
