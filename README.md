@@ -11,6 +11,11 @@ Unguard also features fake ads, a possibility to edit your biography and manage 
 > **Note**
 > This product is not officially supported by Dynatrace
 
+> **Security Update (October 2025)**  
+> 🔒 Critical frontend vulnerabilities have been fixed. See [SECURITY_ADVISORY.md](SECURITY_ADVISORY.md) for details.  
+> ✅ Updated: axios, Next.js, swagger-ui-react  
+> ⚠️ The @ctrl/tinycolor package is an **intentional demo** - uses safe local simulation via Verdaccio
+
 ## 🖼️ Screenshots
 
 | Timeline                                                                                                | User profile                                                                                                      |
