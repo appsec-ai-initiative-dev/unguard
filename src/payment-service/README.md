@@ -43,7 +43,15 @@ The service offers the following endpoints:
         "cvv": "123"
     }
     ```
-If the user does not exist, the service will return a 404 status code.
+If the user does not have payment information, the service will return a 200 status code with empty fields:
+    ```json
+    {
+        "cardHolderName": "",
+        "cardNumber": "",
+        "expiryDate": "",
+        "cvv": ""
+    }
+    ```
 
 - `POST /payment-service/1`: Adds the payment information for user with the ID 1. The request body should have the following structure:
     ```json
