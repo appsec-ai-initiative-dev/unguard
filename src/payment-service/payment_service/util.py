@@ -48,7 +48,13 @@ def create_payment_response(card):
     elif status == OperationResult.INSERTED:
         return create_json_message_object(data), 201
     elif status == OperationResult.NOT_FOUND:
-        return create_json_message_object(data), 404
+        # Return 200 with empty payment info instead of 404 to avoid false-positive errors
+        return jsonify({
+            "cardHolderName": "",
+            "cardNumber": "",
+            "expiryDate": "",
+            "cvv": ""
+        }), 200
     else:
         logger.error("Server error")
         return create_json_message_object("Internal server error"), 500
