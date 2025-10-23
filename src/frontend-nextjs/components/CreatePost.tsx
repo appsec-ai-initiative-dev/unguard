@@ -73,7 +73,7 @@ export function CreatePost() {
                             aria-label='Options'
                             color='primary'
                             selectedKey={selectedPostType}
-                            onSelectionChange={(key) => setSelectedPostType(key.toString())}
+                            onSelectionChange={(key) => setSelectedPostType(key?.toString() || 'text')}
                         >
                             <Tab key='text' id='shareTextTab' title='Share Text'>
                                 <Textarea
