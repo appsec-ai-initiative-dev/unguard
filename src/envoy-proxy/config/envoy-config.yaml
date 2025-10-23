@@ -77,6 +77,10 @@ static_resources:
                             path_redirect: /ui
                             response_code: FOUND
                         - match:
+                            prefix: /ruxitagentjs_
+                          route:
+                            cluster: frontend_cluster
+                        - match:
                             prefix: /ui
                           route:
                             cluster: frontend_cluster
