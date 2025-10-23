@@ -73,10 +73,10 @@ Based on the user's question, automatically route to the appropriate workflow:
 fetch spans, from:now() - 4h
 | filter request.is_failed == true and isNotNull(span.events)
 | expand span.events
-| filter span.events.name == "exception"
+| filter span.events[span_event.name] == "exception"
 | summarize exception_count = count(), by: {
     service_name = entityName(dt.entity.service),
-    exception_message = span.events.attributes["exception.message"]
+    exception_message = span.events[exception.message]
 }
 | sort exception_count desc
 ```
@@ -102,8 +102,9 @@ timeseries {
   total_requests = sum(dt.service.request.count, scalar: true),
   failed_requests = sum(dt.service.request.failure_count, scalar: true)
 },
-by: {service_name = entityName(dt.entity.service)},
+by: {dt.entity.service},
 from: "BEFORE_AFTER_TIMEFRAME"
+| fieldsAdd service_name = entityName(dt.entity.service)
 
 // Calculate: (failed_requests / total_requests) * 100
 ```
@@ -156,8 +157,9 @@ timeseries {
   error_rate = sum(dt.service.request.failure_count, scalar: true, rate: 1m),
   avg_cpu = avg(dt.host.cpu.usage, scalar: true)
 },
-by: {service_name = entityName(dt.entity.service)},
+by: {dt.entity.service},
 from: now()-2h
+| fieldsAdd service_name = entityName(dt.entity.service)
 ```
 
 ---
@@ -339,10 +341,10 @@ fetch user.events                       // RUM/frontend events
 ```dql
 // MANDATORY for exception analysis
 fetch spans | expand span.events
-| filter span.events.name == "exception"
+| filter span.events[span_event.name] == "exception"
 
 // Access nested attributes
-| fields span.events.attributes["exception.message"]
+| fields span.events[exception.message]
 ```
 
 #### **9. `timeseries` - Time-Based Metrics**
@@ -437,7 +439,7 @@ timeseries sum(dt.service.request.count), from: now()-1h, interval: 5m
 timeseries {
   requests_per_second = sum(dt.service.request.count, scalar: true, rate: 1s),
   requests_per_minute = sum(dt.service.request.count, scalar: true, rate: 1m),
-  network_mbps = sum(dt.host.net.nic.bytes_rx, scalar: true, rate: 1s) / 1024 / 1024
+  network_mbps = sum(dt.host.net.nic.bytes_rx, rate: 1s) / 1024 / 1024
 },
 from: now()-2h
 ```
@@ -473,7 +475,7 @@ fetch spans | filter dt.entity.service == "SERVICE-ID"
 
 // Exception analysis (MANDATORY)
 fetch spans | filter isNotNull(span.events)
-| expand span.events | filter span.events.name == "exception"
+| expand span.events | filter span.events[span_event.name] == "exception"
 ```
 
 #### **Logs**
@@ -528,11 +530,11 @@ fetch dt.semantic_dictionary.fields
 fetch spans, from:now() - 4h
 | filter request.is_failed == true and isNotNull(span.events)
 | expand span.events
-| filter span.events.name == "exception"
+| filter span.events[span_event.name] == "exception"
 | summarize exception_count = count(), by: {
     service_name = entityName(dt.entity.service),
-    exception_message = span.events.attributes["exception.message"],
-    exception_type = span.events.attributes["exception.type"]
+    exception_message = span.events[exception.message],
+    exception_type = span.events[exception.type]
 }
 | sort exception_count desc
 
@@ -595,12 +597,12 @@ fetch security.events, from:now() - 7d
 ```dql
 // Correlate logs with spans using trace IDs
 fetch logs, from:now() - 2h
-| filter isNotNull(trace_id)
+| filter in(trace_id, array("e974a7bd2e80c8762e2e5f12155a8114"))
 | fields trace_id, content, timestamp
 
 // Then join with spans
 fetch spans, from:now() - 2h
-| filter trace.id in [/* trace IDs from logs */]
+| filter in(trace.id, array(toUid("e974a7bd2e80c8762e2e5f12155a8114")))
 | fields trace.id, span.events, service_name = entityName(dt.entity.service)
 ```
 
@@ -662,7 +664,7 @@ Understand what the user is trying to achieve:
 For service failures, ALWAYS expand span.events:
 ```dql
 fetch spans | filter request.is_failed == true
-| expand span.events | filter span.events.name == "exception"
+| expand span.events | filter span.events[span_event.name] == "exception"
 ```
 
 ### **3. Use Latest Scan Data for Security**
@@ -763,8 +765,9 @@ Agent:
 Here's the DQL query you need:
 
 timeseries p95_latency = percentile(dt.service.request.response_time, 95, scalar: true),
-by: {service_name = entityName(dt.entity.service)},
+by: {dt.entity.service},
 from: now()-1h
+| fieldsAdd service_name = entityName(dt.entity.service)
 | sort p95_latency desc
 | limit 10
 
@@ -808,7 +811,7 @@ fetch security.events, from:now() - 30d
 ```dql
 // ✅ MANDATORY for incidents
 fetch spans | filter request.is_failed == true
-| expand span.events | filter span.events.name == "exception"
+| expand span.events | filter span.events[span_event.name] == "exception"
 
 // ❌ INSUFFICIENT
 fetch spans | filter request.is_failed == true | summarize count()
