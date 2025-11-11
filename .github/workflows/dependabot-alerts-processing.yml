@@ -53,21 +53,40 @@ jobs:
 
             const currentRunTime = new Date();
 
-            // FIXED: No page parameter - single API call, set per_page to max 1000
+            // Updated to request max 100 per page and use link header for pagination
             async function listCriticalDependabotAlerts(owner, repo) {
-              const perPage = 1000;
-              const res = await github.request("GET /repos/{owner}/{repo}/dependabot/alerts", {
-                owner,
-                repo,
-                state: "open",
-                severity: "critical",
-                per_page: perPage
-              });
-              return res.data;
+              const perPage = 100;
+              let allAlerts = [];
+              let url = `/repos/${owner}/${repo}/dependabot/alerts?state=open&severity=critical&per_page=${perPage}`;
+              while (url) {
+                const res = await github.request(`GET ${url}`);
+                allAlerts = allAlerts.concat(res.data);
+
+                // Parse Link header for next page if present
+                const link = res.headers.link;
+                let nextPageUrl = null;
+                if (link) {
+                  const links = link.split(",");
+                  for (const l of links) {
+                    const match = l.match(/<([^>]+)>;\s*rel="next"/);
+                    if (match) {
+                      // Next page exists, set url for next fetch
+                      // GitHub returns full URL, so trim host prefix if present
+                      let next = match[1];
+                      if (next.startsWith("https://api.github.com")) {
+                        next = next.replace("https://api.github.com", "");
+                      }
+                      nextPageUrl = next;
+                      break;
+                    }
+                  }
+                }
+                url = nextPageUrl;
+              }
+              return allAlerts;
             }
 
             async function consolidatedIssueExists(runMarker) {
-              // List open issues with expected labels, and check for marker in body
               const perPage = 100;
               let page = 1;
               let found = false;
