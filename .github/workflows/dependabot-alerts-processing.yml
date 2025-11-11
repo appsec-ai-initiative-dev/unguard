@@ -53,24 +53,17 @@ jobs:
 
             const currentRunTime = new Date();
 
+            // FIXED: No page parameter - single API call, set per_page to max 1000
             async function listCriticalDependabotAlerts(owner, repo) {
-              const perPage = 100;
-              let page = 1;
-              let all = [];
-              for (;;) {
-                const res = await github.request("GET /repos/{owner}/{repo}/dependabot/alerts", {
-                  owner,
-                  repo,
-                  state: "open",
-                  severity: "critical",
-                  per_page: perPage,
-                  page
-                });
-                all = all.concat(res.data);
-                if (res.data.length < perPage) break;
-                page++;
-              }
-              return all;
+              const perPage = 1000;
+              const res = await github.request("GET /repos/{owner}/{repo}/dependabot/alerts", {
+                owner,
+                repo,
+                state: "open",
+                severity: "critical",
+                per_page: perPage
+              });
+              return res.data;
             }
 
             async function consolidatedIssueExists(runMarker) {
@@ -285,29 +278,4 @@ jobs:
               });
               core.info(`Created consolidated issue #${issueNumber} and assigned to copilot-swe-agent via assigneeIds`);
             } catch (e) {
-              // Fallback: create without Copilot assignment, add a label and comment
-              if (e.message === "COPILOT_NOT_ASSIGNABLE" || e.status === 422) {
-                const created = await github.rest.issues.create({
-                  owner,
-                  repo,
-                  title,
-                  body,
-                  labels: [...labelsToAdd, "copilot-assignment-failed"]
-                });
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number: created.data.number,
-                  body: "Automatic assignment to the Copilot coding agent (copilot-swe-agent) could not be completed. Ensure the agent is enabled for this repository and that this GitHub token can assign it (it should appear in the repo Assignees REST check)."
-                });
-                core.warning(`Copilot assignment unavailable; created issue #${created.data.number} with fallback label.`);
-              } else if (e.status === 403) {
-                core.error(`Issues API denied (403). Verify the personal access token has 'Issues: Read and write' and is allowed for this repository. Message: ${e.message}`);
-                throw e;
-              } else {
-                core.error(`Issue creation/assignment error: ${e.status || ""} ${e.message}`);
-                throw e;
-              }
-            }
-            fs.writeFileSync(lastRunFile, currentRunTime.toISOString());
-            core.info(`Updated last run timestamp to: ${currentRunTime.toISOString()}`)
+              // Fallback: create without Cop
