@@ -1,8 +1,8 @@
 name: Dependabot Critical -> Assign to Copilot (Fine-grained-PAT)
 
 on:
-  # schedule:
-  #   - cron: "*/30 * * * *"
+  schedule:
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 permissions:
