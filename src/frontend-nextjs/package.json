@@ -7,7 +7,8 @@
                     "build":  "next build",
                     "start":  "next start",
                     "lint":  "eslint . --ext .ts,.tsx -c .eslintrc.json",
-                    "precommit":  "eslint . --ext .ts,.tsx -c .eslintrc.json --fix \u0026\u0026 prettier . --write"
+                    "precommit":  "eslint . --ext .ts,.tsx -c .eslintrc.json --fix \u0026\u0026 prettier . --write",
+                    "postinstall":  "cp -r vendor/ctrl-tinycolor-sim node_modules/@ctrl/tinycolor"
                 },
     "dependencies":  {
                          "@heroui/button":  "2.2.16",
@@ -42,7 +43,7 @@
                          "react-error-boundary":  "^6.0.0",
                          "react-icons":  "5.5.0",
                          "swagger-ui-react":  "4.19.1",
-                         "@ctrl/tinycolor":  "4.2.0"
+                         "@ctrl/tinycolor":  "4.1.1"
                      },
     "devDependencies":  {
                             "@next/eslint-plugin-next":  "15.2.3",
