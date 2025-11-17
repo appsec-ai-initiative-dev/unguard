@@ -32,7 +32,7 @@ export default function RootLayout({ children }: PropsWithChildren) {
                 <link color='#ea5455' href={BASE_PATH + '/safari-pinned-tab.svg'} rel='mask-icon' />
                 <link href={BASE_PATH + '/manifest.json'} rel='manifest' />
                 <meta content='#ea5455' name='msapplication-TileColor' />
-                <meta content='ui/ms-icon-144x144.png' name='msapplication-TileImage' />
+                <meta content={BASE_PATH + '/mstile-144x144.png'} name='msapplication-TileImage' />
                 <meta content='#ffffff' name='theme-color' />
             </head>
 
