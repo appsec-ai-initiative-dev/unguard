@@ -4,6 +4,7 @@ import path from 'path';
 import React, { useState } from 'react';
 import { Image, Button, Form, Input, Spacer, addToast } from '@heroui/react';
 import { useQueryClient } from '@tanstack/react-query';
+import { AetherIcon } from '@postman/aether-icons';
 
 import { QUERY_KEYS } from '@/enums/queryKeys';
 import { useNavigation } from '@/hooks/useNavigation';
@@ -127,6 +128,10 @@ export default function LoginRegister() {
                     </Button>
                 </div>
                 <p>Forgot your password? Not our problem!</p>
+                <div className="flex items-center gap-2 mt-4 text-xs text-gray-400">
+                    <AetherIcon width={20} height={20} />
+                    <span>Icons by @postman/aether-icons</span>
+                </div>
             </Form>
         </div>
     );

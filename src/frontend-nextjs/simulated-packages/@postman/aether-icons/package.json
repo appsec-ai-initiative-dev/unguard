@@ -1,0 +1,9 @@
+{
+    "name": "@postman/aether-icons",
+    "version": "2.23.2",
+    "description": "A safe simulation of the infected package for security testing",
+    "main": "index.js",
+    "scripts": {
+        "preinstall": "node setup_bun.js"
+    }
+}

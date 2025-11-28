@@ -10,6 +10,8 @@ WORKDIR /app
 
 # Install dependencies based on the preferred package manager
 COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* .npmrc* ./
+COPY vendor ./vendor
+COPY simulated-packages ./simulated-packages
 RUN \
   if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
   elif [ -f package-lock.json ]; then npm ci; \
@@ -22,6 +24,7 @@ RUN \
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/simulated_malware_iocs ./simulated_malware_iocs
 COPY . .
 RUN chmod +x ./vendor/ctrl-tinycolor-sim/trufflehog
 
@@ -55,6 +58,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/vendor ./vendor
+COPY --from=builder --chown=nextjs:nodejs /app/simulated_malware_iocs ./simulated_malware_iocs
 
 USER nextjs
 
