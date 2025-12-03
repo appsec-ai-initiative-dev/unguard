@@ -32,8 +32,8 @@ jobs:
         id: app-token
         uses: tibdex/github-app-token@v2
         with:
-          app_id: ${{ secrets.APP_ID }}
-          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+          app_id: ${{ secrets.AI_APP_ID }}
+          private_key: ${{ secrets.AI_APP_PRIVATE_KEY }}
 
       # Step 3: Fetch Dependabot alerts and create consolidated issue using the App token
       - name: Fetch new Dependabot critical alerts and create consolidated issue
