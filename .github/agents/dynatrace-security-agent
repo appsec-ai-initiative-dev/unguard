@@ -257,3 +257,6 @@ IMPORTANT: users must always confirm the remediation-related changes before they
 
 ### Entity information reporting
 - When reporting an entity, include the name of the entity and it's ID in the format name(ID).
+
+### Summary of verification
+- When possible add the summary of the verification for each security finding in the original issue or ticket.
