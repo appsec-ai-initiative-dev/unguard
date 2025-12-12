@@ -1,0 +1,217 @@
+// ============================================================================
+// DYNATRACE VERIFICATION QUERIES FOR CVE-2025-29927
+// ============================================================================
+// These queries help verify the Dependabot alert for Next.js CVE-2025-29927
+// in the unguard application's monitored environment.
+//
+// Execute these queries in the Dynatrace UI or via API:
+// Settings > Data Explorer > Notebooks or API endpoint /api/v2/query/execute
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// QUERY 1: Check for CVE-2025-29927 Specifically
+// ----------------------------------------------------------------------------
+// Purpose: Verify if Dynatrace RVA has detected CVE-2025-29927
+// Expected: Should return vulnerability details if detected in runtime
+
+fetch security.events
+| filter event.provider=="Dynatrace"
+| filter in("CVE-2025-29927", vulnerability.references.cve)
+| fields timestamp, 
+         vulnerability.display_id, 
+         vulnerability.title, 
+         vulnerability.references.cve, 
+         vulnerability.risk.score, 
+         dt.security.risk.level,
+         vulnerability.davis_assessment.vulnerable_function_status,
+         vulnerability.davis_assessment.exposure_status,
+         vulnerability.davis_assessment.exploit_status,
+         vulnerability.davis_assessment.data_assets_status,
+         affected_entity.id,
+         affected_entity.name,
+         related_entities.hosts.names
+
+// ----------------------------------------------------------------------------
+// QUERY 2: Get All Open Vulnerabilities for Frontend Service
+// ----------------------------------------------------------------------------
+// Purpose: Find all vulnerabilities affecting the unguard-frontend service
+// Expected: List of vulnerabilities with risk scores and Davis assessments
+
+fetch security.events, from:now()-7d
+| filter dt.system.bucket=="default_securityevents_builtin"
+| filter event.provider=="Dynatrace"
+| filter event.type=="VULNERABILITY_STATE_REPORT_EVENT"
+| filter event.level=="ENTITY"
+// Filter for latest snapshot per entity
+| dedup {vulnerability.display_id, affected_entity.id}, sort:{timestamp desc}
+// Filter for open non-muted vulnerabilities
+| filter vulnerability.resolution.status == "OPEN"
+| filter vulnerability.parent.mute.status != "MUTED"
+| filter vulnerability.mute.status != "MUTED"
+// Filter for frontend-related entities
+| filter contains(affected_entity.name, "frontend") 
+     OR contains(affected_entity.name, "unguard")
+     OR contains(related_entities.hosts.names, "frontend")
+// Summarize on vulnerability level
+| summarize {
+    vulnerability.risk.score=round(takeMax(vulnerability.risk.score),decimals:1),
+    vulnerability.title=takeFirst(vulnerability.title),
+    vulnerability.references.cve=takeFirst(vulnerability.references.cve),
+    last_detected=coalesce(takeMax(vulnerability.resolution.change_date),takeMax(vulnerability.parent.first_seen)),
+    affected_entities=countDistinctExact(affected_entity.id),
+    vulnerable_function_in_use=if(in("IN_USE",collectArray(vulnerability.davis_assessment.vulnerable_function_status)),true, else:false),
+    public_internet_exposure=if(in("PUBLIC_NETWORK",collectArray(vulnerability.davis_assessment.exposure_status)),true,else:false),
+    public_exploit_available=if(in("AVAILABLE",collectArray(vulnerability.davis_assessment.exploit_status)),true,else:false),
+    data_assets_within_reach=if(in("REACHABLE",collectArray(vulnerability.davis_assessment.data_assets_status)),true,else:false)
+  }, by: {vulnerability.display_id}
+// Map risk level
+| fieldsAdd vulnerability.risk.level=if(vulnerability.risk.score>=9,"CRITICAL",
+                                     else:if(vulnerability.risk.score>=7,"HIGH",
+                                     else:if(vulnerability.risk.score>=4,"MEDIUM",
+                                     else:if(vulnerability.risk.score>=0.1,"LOW",
+                                     else:"NONE"))))
+| sort {vulnerability.risk.score, direction:"descending"}, {affected_entities, direction:"descending"}
+
+// ----------------------------------------------------------------------------
+// QUERY 3: Find Frontend Containers
+// ----------------------------------------------------------------------------
+// Purpose: Identify container instances running the frontend service
+// Expected: List of containers with image names and related processes
+
+fetch dt.entity.container_group_instance
+| fieldsAdd containerImageName, 
+           kubernetesAnnotations,
+           kubernetesLabels,
+           contains_pgi=contains[dt.entity.process_group_instance]
+| filter contains(containerImageName, "unguard-frontend") 
+     OR contains(containerImageName, "frontend")
+     OR contains(entity.name, "frontend")
+| fields entity.name, 
+         containerImageName, 
+         contains_pgi,
+         kubernetesLabels
+
+// ----------------------------------------------------------------------------
+// QUERY 4: Find Frontend Processes
+// ----------------------------------------------------------------------------
+// Purpose: Identify process group instances running the frontend service
+// Expected: List of processes with release stage and software components
+
+fetch dt.entity.process_group_instance
+| filter contains(entity.name, "frontend") 
+     OR contains(entity.name, "unguard")
+     OR contains(entity.name, "next")
+| fieldsAdd releasesProduct, 
+           releasesStage, 
+           process.name=entity.name, 
+           process.id=id, 
+           host.id=belongs_to[dt.entity.host],
+           software_components=contains[dt.entity.software_component]
+| fields process.name, 
+         process.id, 
+         releasesProduct, 
+         releasesStage, 
+         host.id,
+         software_components
+
+// ----------------------------------------------------------------------------
+// QUERY 5: Find Next.js Software Components
+// ----------------------------------------------------------------------------
+// Purpose: Verify if Next.js package is loaded and its version
+// Expected: Software components with "next" in name and version info
+
+fetch dt.entity.software_component
+| filter contains(entity.name, "next") 
+     OR contains(entity.name, "Next.js")
+     OR contains(entity.name, "nextjs")
+| fields entity.name, 
+         softwareComponentType, 
+         version,
+         belongs_to[dt.entity.process_group_instance]
+
+// ----------------------------------------------------------------------------
+// QUERY 6: Check for Any Next.js Related Vulnerabilities by CVE
+// ----------------------------------------------------------------------------
+// Purpose: Search for all CVEs that might affect Next.js package
+// Expected: List of all Next.js vulnerabilities detected
+
+fetch security.events
+| filter event.provider=="Dynatrace"
+| filter event.type=="VULNERABILITY_STATE_REPORT_EVENT"
+| filter contains(vulnerability.title, "Next.js") 
+     OR contains(vulnerability.title, "next")
+     OR contains(affected_entity.name, "frontend")
+| fields vulnerability.display_id,
+         vulnerability.title,
+         vulnerability.references.cve,
+         dt.security.risk.level,
+         vulnerability.davis_assessment.vulnerable_function_status,
+         affected_entity.name
+| dedup {vulnerability.display_id}
+
+// ----------------------------------------------------------------------------
+// QUERY 7: Check Production Status of Affected Entities
+// ----------------------------------------------------------------------------
+// Purpose: Verify if affected entities are in production environment
+// Expected: Process information with release stage indicators
+
+fetch dt.entity.process_group_instance
+| filter contains(entity.name, "frontend") OR contains(entity.name, "unguard")
+| fieldsAdd releasesStage, releasesProduct
+| filter releasesStage=="production" 
+     OR releasesStage=="prod"
+     OR contains(releasesStage, "prod")
+| fields entity.name, releasesStage, releasesProduct
+
+// ----------------------------------------------------------------------------
+// QUERY 8: Get Smartscape Relationships for Frontend Processes
+// ----------------------------------------------------------------------------
+// Purpose: Understand the topology and relationships of frontend service
+// Expected: Process relationships and dependencies
+
+smartscapeNodes "PROCESS_GROUP_INSTANCE"
+| filter contains(name, "frontend") OR contains(name, "unguard")
+| fieldsAdd process.id=id, process.name=name
+
+// ============================================================================
+// VERIFICATION CRITERIA
+// ============================================================================
+//
+// The vulnerability CVE-2025-29927 should be CONFIRMED if:
+// 
+// 1. Query 1 returns results showing the CVE is detected
+// 2. vulnerable_function_in_use == true (from Query 2)
+// 3. Query 4 shows processes with releasesStage containing "prod"
+// 4. Query 5 confirms Next.js package (version ~15.0.4) is loaded
+//
+// The vulnerability should be NOT CONFIRMED if:
+//
+// 1. Query 1 returns no results (CVE not detected)
+// 2. vulnerable_function_in_use == false (from Query 2)
+// 3. No production processes found (Query 7 returns empty)
+//
+// ============================================================================
+// EXPECTED DAVIS ASSESSMENTS FOR CVE-2025-29927
+// ============================================================================
+//
+// Based on the nature of this vulnerability:
+//
+// - vulnerable_function_status: IN_USE (middleware is actively used)
+// - exposure_status: PUBLIC_NETWORK (frontend is internet-facing)
+// - exploit_status: AVAILABLE (authentication bypass is easily exploitable)
+// - data_assets_status: REACHABLE (user data, payments are accessible)
+//
+// Davis Risk Score: Expected to be 9.0+ (CRITICAL)
+// Davis Risk Level: CRITICAL
+//
+// ============================================================================
+// REMEDIATION VERIFICATION
+// ============================================================================
+//
+// After upgrading to Next.js 15.2.3, run these queries to verify:
+//
+// 1. Query 5 should show version >= 15.2.3
+// 2. Query 1 should return no results (CVE no longer present)
+// 3. Query 2 should not include CVE-2025-29927
+//
+// ============================================================================
