@@ -34,10 +34,10 @@ The unguard application uses Next.js middleware for JWT-based authentication (se
 
 ### Advisory Database Check
 Verified with GitHub Advisory Database that version 15.5.9 has **no known vulnerabilities**, while the minimum fix version 15.2.3 had additional vulnerabilities:
-- DoS vulnerability (GHSA-xxxx)
-- RCE vulnerability (GHSA-yyyy)
+- DoS vulnerability affecting server components
+- RCE vulnerability in React flight protocol
 
-Therefore, upgraded to 15.5.9 instead of 15.2.3 for comprehensive security.
+Therefore, upgraded to 15.5.9 instead of 15.2.3 for comprehensive security and to avoid introducing new vulnerabilities while fixing this one.
 
 ## Changes Made
 
