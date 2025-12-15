@@ -8,10 +8,10 @@ mcp-servers:
     type: 'http'
     url: 'https://pia1134d.dev.apps.dynatracelabs.com/platform-reserved/mcp-gateway/v0.1/servers/dynatrace-mcp/mcp'
     headers: 
-        Authorization: "Bearer ${{ COPILOT_MCP_DT_API_TOKEN }}"
+        Authorization: "Bearer ${{ COPILOT2_MCP_DT_API_TOKEN }}"
     tools: ["*"]
     env:
-      COPILOT_MCP_DT_API_TOKEN: "${{ secrets.COPILOT_MCP_DT_API_TOKEN }}"
+      COPILOT2_MCP_DT_API_TOKEN: "${{ secrets.COPILOT2_MCP_DT_API_TOKEN }}"
 ---
 
 ## Dynatrace MCP interaction instructions
