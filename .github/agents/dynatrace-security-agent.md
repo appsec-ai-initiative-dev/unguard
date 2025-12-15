@@ -10,6 +10,8 @@ mcp-servers:
     headers: 
         Authorization: "Bearer ${{ COPILOT_MCP_DT_API_TOKEN }}"
     tools: ["*"]
+    env:
+      COPILOT_MCP_DT_API_TOKEN: "${{ secrets.COPILOT_MCP_DT_API_TOKEN }}"
 ---
 
 ## Dynatrace MCP interaction instructions
