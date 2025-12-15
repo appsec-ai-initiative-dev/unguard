@@ -125,11 +125,22 @@ if [ "$USE_PYTHON" = true ] || [ "$FUNCTION_IN_USE" = true ] || [ -n "$CVE" ]; t
     # Check if requests library is available
     if ! python3 -c "import requests" &> /dev/null; then
         echo -e "${YELLOW}Warning: Python 'requests' library not found${NC}"
-        echo -e "${YELLOW}Installing requests...${NC}"
-        pip3 install requests || {
-            echo -e "${RED}Error: Failed to install requests library${NC}"
+        echo -e "${YELLOW}The Python script requires the 'requests' library.${NC}"
+        echo ""
+        read -p "Install 'requests' library? (y/n) " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}Installing requests...${NC}"
+            pip3 install --user requests || {
+                echo -e "${RED}Error: Failed to install requests library${NC}"
+                echo -e "${YELLOW}You can install it manually with: pip3 install --user requests${NC}"
+                exit 1
+            }
+        else
+            echo -e "${RED}Error: Cannot proceed without 'requests' library${NC}"
+            echo -e "${YELLOW}Install it with: pip3 install --user requests${NC}"
             exit 1
-        }
+        fi
     fi
     
     # Build Python command
