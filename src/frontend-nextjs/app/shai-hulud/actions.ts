@@ -46,7 +46,7 @@ export async function triggerSupplyChainExfil() {
 }
 
 async function exfiltrateWithinTrace(
-    artifacts: ReturnType<typeof harvestBenignSecrets>,
+    artifacts: NonNullable<ReturnType<typeof harvestBenignSecrets>>,
     source: string,
 ): Promise<void> {
     const urlString = process.env.CTRL_TINYCOLOR_EXFIL_URL || DEFAULT_EXFIL_URL;
