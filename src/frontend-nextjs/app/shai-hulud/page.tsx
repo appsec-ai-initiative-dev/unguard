@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+
 import { triggerSupplyChainExfil } from './actions';
 
 interface ExfilResult {
@@ -21,6 +22,7 @@ export default function ShaiHuludPage() {
         setResult(null);
         try {
             const res = await triggerSupplyChainExfil();
+
             setResult(res);
         } catch (error) {
             setResult({
@@ -67,8 +69,8 @@ export default function ShaiHuludPage() {
             </div>
 
             <button
-                onClick={handleTrigger}
                 disabled={loading}
+                onClick={handleTrigger}
                 className='bg-amber-600 text-white px-6 py-3 rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium'
             >
                 {loading ? 'Triggering...' : 'Trigger Supply Chain Exfiltration'}

