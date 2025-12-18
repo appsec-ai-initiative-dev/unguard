@@ -128,7 +128,7 @@ export default function LoginRegister() {
                     </Button>
                 </div>
                 <p>Forgot your password? Not our problem!</p>
-                <div className="flex items-center gap-2 mt-4 text-xs text-gray-400">
+                <div className='flex items-center gap-2 mt-4 text-xs text-gray-400'>
                     <AetherIcon width={20} height={20} />
                     <span>Icons by @postman/aether-icons</span>
                 </div>
