@@ -260,3 +260,8 @@ node_modules
 
 
 unguard-0.12.0-160134d.tgz
+
+# Script outputs
+dynatrace_top_vulnerabilities.json
+__pycache__/
+*.pyc
