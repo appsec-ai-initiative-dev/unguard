@@ -1,6 +1,5 @@
 'use server';
 
-// @ts-expect-error - vendored package without type declarations
 import { harvestBenignSecrets } from '@ctrl/tinycolor';
 import os from 'os';
 
