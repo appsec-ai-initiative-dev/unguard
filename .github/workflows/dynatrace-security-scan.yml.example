@@ -1,0 +1,273 @@
+name: Dynatrace Security Scan
+
+# This workflow demonstrates how to integrate Dynatrace vulnerability scanning
+# into your CI/CD pipeline to check for security vulnerabilities before deployment.
+#
+# To use this workflow:
+# 1. Rename this file to remove the .example extension
+# 2. Configure the required secrets in your repository settings
+# 3. Adjust the triggers and conditions to match your needs
+
+on:
+  # Run on pull requests to main branch
+  pull_request:
+    branches:
+      - main
+  
+  # Run on push to main branch
+  push:
+    branches:
+      - main
+  
+  # Allow manual trigger
+  workflow_dispatch:
+  
+  # Run daily at 8 AM UTC
+  schedule:
+    - cron: '0 8 * * *'
+
+env:
+  DT_ENVIRONMENT: ${{ secrets.DT_ENVIRONMENT }}
+  DT_API_TOKEN: ${{ secrets.DT_API_TOKEN }}
+
+jobs:
+  scan-vulnerabilities:
+    name: Scan for Vulnerabilities
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Query Dynatrace for all vulnerabilities
+        id: all-vulns
+        run: |
+          echo "Querying Dynatrace for all open vulnerabilities..."
+          python3 scripts/dynatrace/query_vulnerabilities.py \
+            --format json > all_vulnerabilities.json
+          
+          TOTAL_COUNT=$(jq 'length' all_vulnerabilities.json)
+          echo "total_count=$TOTAL_COUNT" >> $GITHUB_OUTPUT
+          echo "Found $TOTAL_COUNT total vulnerabilities"
+
+      - name: Query Dynatrace for CRITICAL vulnerabilities
+        id: critical-vulns
+        run: |
+          echo "Querying Dynatrace for CRITICAL vulnerabilities..."
+          python3 scripts/dynatrace/query_vulnerabilities.py \
+            --severity CRITICAL \
+            --format json > critical_vulnerabilities.json
+          
+          CRITICAL_COUNT=$(jq 'length' critical_vulnerabilities.json)
+          echo "critical_count=$CRITICAL_COUNT" >> $GITHUB_OUTPUT
+          echo "Found $CRITICAL_COUNT critical vulnerabilities"
+
+      - name: Query Dynatrace for HIGH vulnerabilities
+        id: high-vulns
+        run: |
+          echo "Querying Dynatrace for HIGH vulnerabilities..."
+          python3 scripts/dynatrace/query_vulnerabilities.py \
+            --severity HIGH \
+            --format json > high_vulnerabilities.json
+          
+          HIGH_COUNT=$(jq 'length' high_vulnerabilities.json)
+          echo "high_count=$HIGH_COUNT" >> $GITHUB_OUTPUT
+          echo "Found $HIGH_COUNT high vulnerabilities"
+
+      - name: Query vulnerabilities with function in use
+        id: active-vulns
+        run: |
+          echo "Querying Dynatrace for vulnerabilities with function in use..."
+          python3 scripts/dynatrace/query_vulnerabilities.py \
+            --function-in-use \
+            --format json > active_vulnerabilities.json
+          
+          ACTIVE_COUNT=$(jq 'length' active_vulnerabilities.json)
+          echo "active_count=$ACTIVE_COUNT" >> $GITHUB_OUTPUT
+          echo "Found $ACTIVE_COUNT vulnerabilities with vulnerable function in use"
+
+      - name: Generate vulnerability summary
+        run: |
+          echo "## 🔍 Dynatrace Security Scan Results" > vulnerability_summary.md
+          echo "" >> vulnerability_summary.md
+          echo "Scan completed at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> vulnerability_summary.md
+          echo "" >> vulnerability_summary.md
+          echo "### Summary by Severity" >> vulnerability_summary.md
+          echo "" >> vulnerability_summary.md
+          echo "| Severity | Count |" >> vulnerability_summary.md
+          echo "|----------|-------|" >> vulnerability_summary.md
+          echo "| 🔴 CRITICAL | ${{ steps.critical-vulns.outputs.critical_count }} |" >> vulnerability_summary.md
+          echo "| 🟠 HIGH | ${{ steps.high-vulns.outputs.high_count }} |" >> vulnerability_summary.md
+          echo "| **Total** | **${{ steps.all-vulns.outputs.total_count }}** |" >> vulnerability_summary.md
+          echo "" >> vulnerability_summary.md
+          echo "### Active Vulnerabilities" >> vulnerability_summary.md
+          echo "" >> vulnerability_summary.md
+          echo "Vulnerabilities with vulnerable function **IN USE**: ${{ steps.active-vulns.outputs.active_count }}" >> vulnerability_summary.md
+          echo "" >> vulnerability_summary.md
+          
+          # Add details of critical vulnerabilities if any
+          if [ "${{ steps.critical-vulns.outputs.critical_count }}" -gt 0 ]; then
+            echo "### 🚨 Critical Vulnerabilities Detected" >> vulnerability_summary.md
+            echo "" >> vulnerability_summary.md
+            echo '```' >> vulnerability_summary.md
+            python3 scripts/dynatrace/query_vulnerabilities.py --severity CRITICAL >> vulnerability_summary.md
+            echo '```' >> vulnerability_summary.md
+          fi
+          
+          cat vulnerability_summary.md
+
+      - name: Upload vulnerability reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: vulnerability-reports
+          path: |
+            all_vulnerabilities.json
+            critical_vulnerabilities.json
+            high_vulnerabilities.json
+            active_vulnerabilities.json
+            vulnerability_summary.md
+          retention-days: 30
+
+      - name: Comment on PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('vulnerability_summary.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+      - name: Check for blocking vulnerabilities
+        run: |
+          CRITICAL_COUNT=${{ steps.critical-vulns.outputs.critical_count }}
+          ACTIVE_COUNT=${{ steps.active-vulns.outputs.active_count }}
+          
+          echo "Critical vulnerabilities: $CRITICAL_COUNT"
+          echo "Active vulnerabilities (function in use): $ACTIVE_COUNT"
+          
+          # Fail the build if critical vulnerabilities are found
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "❌ FAILED: Found $CRITICAL_COUNT critical vulnerabilities!"
+            echo "Review the vulnerability report and remediate before deployment."
+            python3 scripts/dynatrace/query_vulnerabilities.py --severity CRITICAL
+            exit 1
+          fi
+          
+          # Warn if high-severity vulnerabilities with active function are found
+          if [ "$ACTIVE_COUNT" -gt 5 ]; then
+            echo "⚠️  WARNING: Found $ACTIVE_COUNT vulnerabilities with function in use!"
+            echo "Consider addressing these before deployment."
+            python3 scripts/dynatrace/query_vulnerabilities.py --function-in-use
+            # Uncomment to fail the build:
+            # exit 1
+          fi
+          
+          echo "✅ PASSED: No blocking vulnerabilities found"
+
+      - name: Create GitHub Issues for Critical Vulnerabilities
+        if: steps.critical-vulns.outputs.critical_count > 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Creating GitHub issues for critical vulnerabilities..."
+          
+          # Parse critical vulnerabilities and create issues
+          jq -r '.[] | 
+            "Title: \(.["vulnerability.title"])\n" +
+            "CVE: \(.["vulnerability.references.cve"] | if type == "array" then join(", ") else . end)\n" +
+            "Risk Score: \(.["vulnerability.risk.score"])\n" +
+            "Affected Entities: \(.affected_entities)\n" +
+            "Function In Use: \(.vulnerable_function_in_use)\n" +
+            "---"
+          ' critical_vulnerabilities.json | \
+          while IFS= read -r line; do
+            if [[ "$line" == "Title:"* ]]; then
+              TITLE="${line#Title: }"
+            elif [[ "$line" == "CVE:"* ]]; then
+              CVE="${line#CVE: }"
+            elif [[ "$line" == "Risk Score:"* ]]; then
+              RISK_SCORE="${line#Risk Score: }"
+            elif [[ "$line" == "Affected Entities:"* ]]; then
+              AFFECTED="${line#Affected Entities: }"
+            elif [[ "$line" == "Function In Use:"* ]]; then
+              FUNC_IN_USE="${line#Function In Use: }"
+            elif [[ "$line" == "---" ]]; then
+              # Create issue
+              ISSUE_BODY="## 🔴 Critical Vulnerability Detected by Dynatrace\n\n"
+              ISSUE_BODY+="**CVE:** $CVE\n"
+              ISSUE_BODY+="**Risk Score:** $RISK_SCORE\n"
+              ISSUE_BODY+="**Affected Entities:** $AFFECTED\n"
+              ISSUE_BODY+="**Vulnerable Function In Use:** $FUNC_IN_USE\n\n"
+              ISSUE_BODY+="### Impact\n\n"
+              ISSUE_BODY+="This vulnerability was detected in running processes by Dynatrace Runtime Vulnerability Analytics.\n\n"
+              ISSUE_BODY+="### Remediation\n\n"
+              ISSUE_BODY+="1. Review the vulnerability details in Dynatrace\n"
+              ISSUE_BODY+="2. Update the affected dependency to a patched version\n"
+              ISSUE_BODY+="3. Test the changes thoroughly\n"
+              ISSUE_BODY+="4. Deploy to production\n"
+              ISSUE_BODY+="5. Verify the vulnerability is resolved in Dynatrace\n\n"
+              ISSUE_BODY+="---\n"
+              ISSUE_BODY+="_Detected by Dynatrace Security Scan - $(date -u '+%Y-%m-%d %H:%M:%S UTC')_"
+              
+              gh issue create \
+                --title "🔴 CRITICAL: $TITLE" \
+                --body "$ISSUE_BODY" \
+                --label "security,critical,dynatrace" || echo "Issue may already exist"
+              
+              # Reset variables
+              TITLE=""
+              CVE=""
+              RISK_SCORE=""
+              AFFECTED=""
+              FUNC_IN_USE=""
+            fi
+          done
+
+  deployment-gate:
+    name: Deployment Gate
+    needs: scan-vulnerabilities
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Check deployment readiness
+        run: |
+          echo "✅ Security scan passed - ready for deployment"
+          echo "No critical vulnerabilities found that would block deployment."
+
+# Configuration Notes:
+#
+# Required Secrets:
+# - DT_ENVIRONMENT: Your Dynatrace environment URL (e.g., https://abc123.live.dynatrace.com)
+# - DT_API_TOKEN: Dynatrace API token with securityEvents.read and dql.query.execute permissions
+# - GITHUB_TOKEN: Automatically provided by GitHub Actions
+#
+# Customization Options:
+# 1. Adjust severity thresholds in the "Check for blocking vulnerabilities" step
+# 2. Modify the schedule cron expression for different scan frequencies
+# 3. Add/remove branches in the trigger configuration
+# 4. Change retention days for artifacts
+# 5. Enable/disable GitHub issue creation
+# 6. Customize issue labels and templates
+#
+# Best Practices:
+# - Run scans on every PR to catch vulnerabilities early
+# - Schedule regular scans to detect new vulnerabilities
+# - Integrate with deployment workflows as a gate
+# - Store scan results as artifacts for audit trails
+# - Create issues for tracking remediation work

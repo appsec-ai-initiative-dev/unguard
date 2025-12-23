@@ -91,6 +91,21 @@ See the Unguard Chart [README](chart/README.md) on how to install Unguard in you
 * **[Monitoring](docs/MONACO.md)**: Dynatrace monitoring by
   utilizing [MONACO](https://github.com/dynatrace-oss/dynatrace-monitoring-as-code).
 
+## 🔐 Security Analysis with Dynatrace
+
+Unguard integrates with Dynatrace Runtime Vulnerability Analytics (RVA) to provide real-time security analysis:
+
+* **Query Vulnerabilities**: Use DQL to query and analyze vulnerabilities in running applications
+* **Verify Alerts**: Verify Dependabot and GitHub Advanced Security alerts against runtime behavior
+* **Davis AI Assessment**: Get AI-powered risk assessment with context about vulnerable function usage
+* **CI/CD Integration**: Automate security scanning in your deployment pipeline
+* **Scripts & Tools**: Ready-to-use Python and shell scripts for querying Dynatrace
+
+**Get Started:**
+* [Dynatrace Integration Guide](docs/DYNATRACE-INTEGRATION.md) - Complete setup and usage guide
+* [Security Query Documentation](docs/DYNATRACE-SECURITY-QUERIES.md) - DQL query examples and patterns
+* [Query Scripts](scripts/dynatrace/README.md) - Command-line tools for vulnerability scanning
+
 ## ➕ Additional Deployment Options
 
 * **Tracing and Jaeger**: [See these instructions](docs/TRACING.md)
