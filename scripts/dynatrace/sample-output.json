@@ -1,0 +1,95 @@
+[
+  {
+    "vuln_id": "VULN-12345",
+    "vuln_title": "Apache Tomcat Remote Code Execution",
+    "severity": "CRITICAL",
+    "cvss_score": 9.8,
+    "davis_risk_level": "CRITICAL",
+    "davis_risk_score": 9.5,
+    "function_in_use": true,
+    "public_exploit": true,
+    "reachable_data": true,
+    "technology": "JAVA",
+    "vulnerable_component": "org.apache.tomcat:tomcat-coyote:9.0.70",
+    "cve_ids": [
+      "CVE-2023-46589"
+    ],
+    "entity_name": "unguard-proxy-service",
+    "entity_type": "PROCESS_GROUP",
+    "entity_id": "PROCESS_GROUP-ABCD1234EFGH5678",
+    "resolution_status": "OPEN",
+    "muted": false,
+    "first_seen": "2024-12-01T10:30:00.000Z",
+    "last_updated": "2024-12-16T14:00:00.000Z"
+  },
+  {
+    "vuln_id": "VULN-23456",
+    "vuln_title": "Spring Framework Expression Language Injection",
+    "severity": "HIGH",
+    "cvss_score": 8.1,
+    "davis_risk_level": "HIGH",
+    "davis_risk_score": 7.8,
+    "function_in_use": true,
+    "public_exploit": false,
+    "reachable_data": false,
+    "technology": "JAVA",
+    "vulnerable_component": "org.springframework:spring-expression:5.3.22",
+    "cve_ids": [
+      "CVE-2023-20873"
+    ],
+    "entity_name": "unguard-microblog-service",
+    "entity_type": "PROCESS_GROUP",
+    "entity_id": "PROCESS_GROUP-WXYZ9876IJKL4321",
+    "resolution_status": "OPEN",
+    "muted": false,
+    "first_seen": "2024-12-05T08:15:00.000Z",
+    "last_updated": "2024-12-16T14:00:00.000Z"
+  },
+  {
+    "vuln_id": "VULN-34567",
+    "vuln_title": "Jackson Databind Deserialization Vulnerability",
+    "severity": "HIGH",
+    "cvss_score": 7.5,
+    "davis_risk_level": "MEDIUM",
+    "davis_risk_score": 4.2,
+    "function_in_use": false,
+    "public_exploit": true,
+    "reachable_data": false,
+    "technology": "JAVA",
+    "vulnerable_component": "com.fasterxml.jackson.core:jackson-databind:2.13.3",
+    "cve_ids": [
+      "CVE-2022-42003",
+      "CVE-2022-42004"
+    ],
+    "entity_name": "unguard-profile-service",
+    "entity_type": "PROCESS_GROUP",
+    "entity_id": "PROCESS_GROUP-LMNO5678PQRS1234",
+    "resolution_status": "OPEN",
+    "muted": false,
+    "first_seen": "2024-11-28T16:45:00.000Z",
+    "last_updated": "2024-12-16T14:00:00.000Z"
+  },
+  {
+    "vuln_id": "VULN-45678",
+    "vuln_title": "Log4j2 Remote Code Execution (Log4Shell)",
+    "severity": "CRITICAL",
+    "cvss_score": 10.0,
+    "davis_risk_level": "LOW",
+    "davis_risk_score": 2.1,
+    "function_in_use": false,
+    "public_exploit": true,
+    "reachable_data": false,
+    "technology": "JAVA",
+    "vulnerable_component": "org.apache.logging.log4j:log4j-core:2.14.1",
+    "cve_ids": [
+      "CVE-2021-44228"
+    ],
+    "entity_name": "unguard-legacy-service",
+    "entity_type": "PROCESS_GROUP",
+    "entity_id": "PROCESS_GROUP-TUVW3456XYZA7890",
+    "resolution_status": "OPEN",
+    "muted": false,
+    "first_seen": "2024-10-15T12:00:00.000Z",
+    "last_updated": "2024-12-16T14:00:00.000Z"
+  }
+]

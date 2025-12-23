@@ -1,0 +1,8 @@
+# Python dependencies for Dynatrace vulnerability scripts
+
+# HTTP client for API calls
+requests>=2.31.0,<3.0.0
+
+# Optional: For enhanced JSON handling
+# Not required but recommended for pretty printing
+# pip install jq  # For jq-like JSON processing in Python
