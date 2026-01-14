@@ -44,6 +44,9 @@ RUN \
 FROM base AS runner
 WORKDIR /app
 
+# Install curl, python3, and bash
+RUN apk add --no-cache curl python3 bash
+
 ENV NODE_ENV=production
 # Uncomment the following line in case you want to disable telemetry during runtime.
 ENV NEXT_TELEMETRY_DISABLED=1
