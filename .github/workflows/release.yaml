@@ -1,11 +1,5 @@
 ﻿name: Publish images
 on:
-  push:
-    branches:
-      - main
-      - 'release/**'
-    paths:
-      - "src/**"
   workflow_dispatch:
 
 jobs:

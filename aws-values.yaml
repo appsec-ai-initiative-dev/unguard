@@ -1,0 +1,90 @@
+localDev:
+  enabled: false
+
+aws:
+  enabled: true
+
+profileService:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-profile-service
+        tag: 0.12.0-a79b327
+
+userSimulator:
+  cronJob:
+    jobTemplate:
+      container:
+        image:
+          repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-user-simulator
+          tag: 0.12.0-a79b327
+
+membershipService:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-membership-service
+        tag: 0.12.0-a79b327
+
+userAuthService:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-user-auth-service
+        tag: 0.12.0-a79b327
+
+adService:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-ad-service
+        tag: 0.12.0-a79b327
+
+envoyProxy:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-envoy-proxy
+        tag: 0.12.0-a79b327
+
+microblogService:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-microblog-service
+        tag: 0.12.0-a79b327
+
+statusService:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-status-service
+        tag: 0.12.0-a79b327
+
+proxyService:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-proxy-service
+        tag: 0.12.0-a79b327
+
+likeService:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-like-service
+        tag: 0.12.0-a79b327
+
+paymentService:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-payment-service
+        tag: 0.12.0-a79b327
+
+frontend:
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-frontend
+        tag: 0.12.0-a79b327
