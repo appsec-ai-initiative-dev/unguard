@@ -137,7 +137,7 @@ While application dependencies are clean, Dynatrace detected **8 Kubernetes infr
 4. **Smart Remediation:** Dismiss false positives, fix real threats
 
 ### Why Dynatrace Verification Matters
-- **Reduces Alert Fatigue:** Deprioritize 100% of unconfirmed alerts
+- **Reduces Alert Fatigue:** Deprioritizes 100% of unconfirmed alerts
 - **Saves Development Time:** No wasted effort on unexploitable vulnerabilities
 - **Improves Security Posture:** Focus on real threats
 - **Provides Audit Trail:** Evidence-based security decisions
