@@ -16,6 +16,8 @@
 
 package org.dynatrace.profileservice;
 
+import org.commonmark.parser.Parser;
+import org.commonmark.renderer.html.HtmlRenderer;
 import org.dynatrace.profileservice.dal.DatabaseManager;
 import org.dynatrace.profileservice.exceptions.BioNotFoundException;
 import org.dynatrace.profileservice.model.Bio;
@@ -34,9 +36,6 @@ import org.springframework.web.server.ResponseStatusException;
 import javax.validation.Valid;
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
 
 @RestController
 @Validated
@@ -74,37 +73,12 @@ public class BioController {
     }
 
     private String markdownToHtml(String markdown) {
-        // Unsafe code below, vulnerable to command injection, as 'markdown' is user controlled
-        final String[] command = {"/bin/sh", "-c", "echo '" + markdown + "' | markdown"};
-
-        final ProcessBuilder processBuilder = new ProcessBuilder(command);
-
-        Process process;
+        // FIXED: Use safe markdown library instead of shell command execution
         try {
-            process = processBuilder.start();
-
-            final BufferedReader err = new BufferedReader(new InputStreamReader(process.getErrorStream()));
-
-            String errLine;
-            while ((errLine = err.readLine()) != null) {
-                logger.warn(errLine);
-            }
-
-            final BufferedReader in = new BufferedReader(new InputStreamReader(process.getInputStream()));
-
-            String outLine;
-            StringBuilder processOutput = new StringBuilder();
-            while ((outLine = in.readLine()) != null) {
-                processOutput.append(outLine);
-            }
-
-            int returnCode = process.waitFor();
-            if (returnCode != 0) {
-                logger.warn("Markdown converter exited with {}", returnCode);
-            }
-
-            return processOutput.toString();
-        } catch (IOException | InterruptedException e) {
+            Parser parser = Parser.builder().build();
+            HtmlRenderer renderer = HtmlRenderer.builder().build();
+            return renderer.render(parser.parse(markdown));
+        } catch (Exception e) {
             logger.error("Failed to convert markdown", e);
             return markdown;
         }

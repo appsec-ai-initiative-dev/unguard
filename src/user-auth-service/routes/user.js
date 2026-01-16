@@ -60,10 +60,8 @@ router.get('/login', async function (req, res, next) {
         const password = req.query.password;
 
         // check if user exists
-        // vulnerable to sql injection because prepared statements are not used
-        // https://snyk.io/de/blog/preventing-sql-injection-attacks-node-js/
-        const vulnerableQuery = database.checkUserExistsQuery.replace('?', `"${username}"`);
-        const result = await database.dbConnection.query(vulnerableQuery);
+        // Fixed: Use parameterized query to prevent SQL injection
+        const result = await database.dbConnection.query(database.checkUserExistsQuery, [username]);
         if (result[0].length < 1) {
             res.status(404).json({message: "Given user does not exists!"})
             return

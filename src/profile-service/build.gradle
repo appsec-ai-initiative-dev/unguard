@@ -19,6 +19,7 @@ dependencies {
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     runtimeOnly 'com.h2database:h2:2.0.204' // old version is intentionally used
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.commonmark:commonmark:0.21.0' // For safe markdown processing
 }
 
 tasks.named('test') {

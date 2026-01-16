@@ -82,6 +82,10 @@ public class ProxyController {
         CloseableHttpResponse execute = null;
         HttpContext httpContext = new BasicHttpContext();
         try {
+            // FIXED: Validate URL to prevent SSRF attacks
+            if (!isValidUrl(url)) {
+                throw new IllegalArgumentException("Invalid URL provided");
+            }
             HttpGet httpget = new HttpGet(url);
             // let the user chose their own language here
             httpget.addHeader("Accept-Language", header);
@@ -156,10 +160,9 @@ public class ProxyController {
                 .start();
 
         /*
-         * VULNERABLE CODE BELOW
-         * it's never a good idea to not sanitize a user controlled URL
+         * FIXED: Use ProcessBuilder with separate arguments to prevent command injection
          */
-        String[] command = {"/bin/sh", "-c", "curl --silent -S " + url + " --max-time 10 --output " + temporaryJpgFile.getAbsolutePath()};
+        String[] command = {"curl", "--silent", "-S", url, "--max-time", "10", "--output", temporaryJpgFile.getAbsolutePath()};
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.directory(new File("/home/"));
         Process process = processBuilder.start();
@@ -203,6 +206,36 @@ public class ProxyController {
         Files.deleteIfExists(temporaryJpgFile.toPath());
 
         return String.format("data:image/jpg;base64,%s", base64Image);
+    }
+
+    /**
+     * Validates URL to prevent SSRF attacks by blocking private IP ranges and localhost
+     */
+    private boolean isValidUrl(String url) {
+        try {
+            java.net.URI uri = new java.net.URI(url);
+            String host = uri.getHost();
+            
+            if (host == null) {
+                return false;
+            }
+            
+            // Block localhost and loopback addresses
+            if (host.equalsIgnoreCase("localhost") || host.equals("127.0.0.1") || host.equals("::1")) {
+                return false;
+            }
+            
+            // Block private IP ranges
+            java.net.InetAddress addr = java.net.InetAddress.getByName(host);
+            if (addr.isLoopbackAddress() || addr.isLinkLocalAddress() || addr.isSiteLocalAddress()) {
+                return false;
+            }
+            
+            return true;
+        } catch (Exception e) {
+            logger.error("Invalid URL", e);
+            return false;
+        }
     }
 
 }
