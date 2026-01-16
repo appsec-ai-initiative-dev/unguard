@@ -1,7 +1,7 @@
 plugins {
-	// using this version intentionally because we'd like to call a vulnerable function
-	id 'org.springframework.boot' version '2.1.7.RELEASE'
-	id 'io.spring.dependency-management' version '1.0.8.RELEASE'
+	// Updated to fix CVE-2020-5421 and CVE-2022-22965 (Spring4Shell)
+	id 'org.springframework.boot' version '2.5.14'
+	id 'io.spring.dependency-management' version '1.0.15.RELEASE'
 	id 'com.google.cloud.tools.jib' version '2.7.1'
 	id 'java'
 }
@@ -15,6 +15,9 @@ repositories {
 }
 
 dependencies {
+	// JetBrains annotations for @NotNull/@Nullable
+	implementation 'org.jetbrains:annotations:23.0.0'
+	
 	// tracing
 	implementation 'io.jaegertracing:jaeger-client:1.4.0'
 	implementation group: 'io.opentracing.contrib', name: 'opentracing-spring-jaeger-web-starter', version: '3.2.2'
@@ -22,23 +25,23 @@ dependencies {
 	implementation 'junit:junit:4.13.1'
 
 	// https://mvnrepository.com/artifact/io.opentracing.contrib/opentracing-okhttp3
-	compile group: 'io.opentracing.contrib', name: 'opentracing-okhttp3', version: '3.0.0'
+	implementation group: 'io.opentracing.contrib', name: 'opentracing-okhttp3', version: '3.0.0'
 
 
 	// https://mvnrepository.com/artifact/redis.clients/jedis
-	compile group: 'redis.clients', name: 'jedis', version: '3.3.0'
+	implementation group: 'redis.clients', name: 'jedis', version: '3.3.0'
 	// https://mvnrepository.com/artifact/io.opentracing.contrib/opentracing-redis-jedis3
-	compile group: 'io.opentracing.contrib', name: 'opentracing-redis-jedis3', version: '0.1.16'
+	implementation group: 'io.opentracing.contrib', name: 'opentracing-redis-jedis3', version: '0.1.16'
 
 	// https://mvnrepository.com/artifact/com.squareup.okhttp/okhttp
-	compile group: 'com.squareup.okhttp', name: 'okhttp', version: '2.7.5'
+	implementation group: 'com.squareup.okhttp', name: 'okhttp', version: '2.7.5'
 
 	// https://mvnrepository.com/artifact/org.json/json
-	compile group: 'org.json', name: 'json', version: '20201115'
+	implementation group: 'org.json', name: 'json', version: '20201115'
 
 
-	compile 'io.jsonwebtoken:jjwt-api:0.11.2'
-	runtime 'io.jsonwebtoken:jjwt-impl:0.11.2',
+	implementation 'io.jsonwebtoken:jjwt-api:0.11.2'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.2',
 			// Uncomment the next line if you want to use RSASSA-PSS (PS256, PS384, PS512) algorithms:
 			//'org.bouncycastle:bcprov-jdk15on:1.60',
 			'io.jsonwebtoken:jjwt-jackson:0.11.2' // or 'io.jsonwebtoken:jjwt-gson:0.11.2' for gson
