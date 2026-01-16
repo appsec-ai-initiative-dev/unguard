@@ -21,6 +21,8 @@ Both demos are designed to produce **Indicators of Compromise (IoC)** that Dynat
 
 Demonstrates CVE-2025-55182 - a Remote Code Execution vulnerability in React Server Actions where malicious payloads exploit argument deserialization to execute arbitrary code on the server.
 
+**Note:** This vulnerability has been patched in Next.js 15.5.9. This demo simulates the attack behavior for educational and detection testing purposes.
+
 ### Files
 
 - `app/rce/page.tsx` - Client-side UI for triggering the attack
