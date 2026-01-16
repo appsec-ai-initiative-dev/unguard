@@ -50,7 +50,7 @@ export default function Post() {
                     <BsArrowLeft className='stroke-1' />
                 </Button>
                 <Suspense>
-                    <ErrorBoundary fallbackRender={(props) => <ErrorCard message={props.error.message} />}>
+                    <ErrorBoundary fallbackRender={(props) => <ErrorCard message={(props.error as Error).message} />}>
                         <SinglePost />
                     </ErrorBoundary>
                 </Suspense>

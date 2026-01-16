@@ -21,7 +21,7 @@ export default function MyTimeline() {
             <div className='grid gap-8 grid-cols-[70%_30%]'>
                 <div>
                     <CreatePost />
-                    <ErrorBoundary fallbackRender={(props) => <ErrorCard message={props.error.message} />}>
+                    <ErrorBoundary fallbackRender={(props) => <ErrorCard message={(props.error as Error).message} />}>
                         <PersonalTimeline />
                     </ErrorBoundary>
                 </div>

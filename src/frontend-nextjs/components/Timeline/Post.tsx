@@ -72,7 +72,7 @@ export function Post(props: PostProps) {
                 <CardFooter className='gap-3 justify-end px-3'>
                     {isLoggedIn && (
                         <div className='flex gap-1'>
-                            <ErrorBoundary fallbackRender={(props) => <ErrorCard message={props.error.message} />}>
+                            <ErrorBoundary fallbackRender={(props) => <ErrorCard message={(props.error as Error).message} />}>
                                 <LikeButton postId={props.postId} />
                             </ErrorBoundary>
                         </div>

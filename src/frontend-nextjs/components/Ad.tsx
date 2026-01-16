@@ -43,7 +43,7 @@ export function Ad() {
     if (isLoading || isPro) return null;
 
     return (
-        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={props.error.message} />}>
+        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={(props.error as Error).message} />}>
             <AdComponent />
         </ErrorBoundary>
     );

@@ -17,7 +17,7 @@ function UserTimelineComponent({ username }: UserTimelineProps) {
 
 export function UserTimeline({ username }: UserTimelineProps) {
     return (
-        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={props.error.message} />}>
+        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={(props.error as Error).message} />}>
             <UserTimelineComponent username={username} />
         </ErrorBoundary>
     );

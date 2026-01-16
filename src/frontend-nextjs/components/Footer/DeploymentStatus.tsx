@@ -60,7 +60,7 @@ function DeploymentStatusComponent() {
 
 export function DeploymentStatus() {
     return (
-        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={props.error.message} />}>
+        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={(props.error as Error).message} />}>
             <DeploymentStatusComponent />
         </ErrorBoundary>
     );

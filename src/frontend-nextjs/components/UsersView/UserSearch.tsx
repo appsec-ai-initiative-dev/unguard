@@ -106,7 +106,7 @@ function UserSearchComponent() {
 
 export function UserSearch() {
     return (
-        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={props.error.message} />}>
+        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={(props.error as Error).message} />}>
             <UserSearchComponent />
         </ErrorBoundary>
     );

@@ -13,7 +13,7 @@ export function GlobalTimelineComponent() {
 
 export function GlobalTimeline() {
     return (
-        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={props.error.message} />}>
+        <ErrorBoundary fallbackRender={(props) => <ErrorCard message={(props.error as Error).message} />}>
             <GlobalTimelineComponent />
         </ErrorBoundary>
     );
