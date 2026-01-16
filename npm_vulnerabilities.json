@@ -1,0 +1,167 @@
+[
+  {
+    "alert_number": 186,
+    "cve": "CVE-2025-15284",
+    "ghsa": "GHSA-6rw7-vpxm-498p",
+    "severity": "high",
+    "cvss_score": 7.5,
+    "summary": "qs's arrayLimit bypass in its bracket notation allows DoS via memory exhaustion",
+    "package": "qs",
+    "vulnerable_version": "< 6.14.1",
+    "first_patched": {
+      "identifier": "6.14.1"
+    },
+    "manifest": "src/user-auth-service/yarn.lock",
+    "scope": "runtime"
+  },
+  {
+    "alert_number": 185,
+    "cve": null,
+    "ghsa": "GHSA-mwv6-3258-q52c",
+    "severity": "high",
+    "cvss_score": 7.5,
+    "summary": "Next Vulnerable to Denial of Service with Server Components",
+    "package": "next",
+    "vulnerable_version": ">= 15.0.0-canary.0, < 15.0.6",
+    "first_patched": {
+      "identifier": "15.0.6"
+    },
+    "manifest": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime"
+  },
+  {
+    "alert_number": 177,
+    "cve": "CVE-2025-65945",
+    "ghsa": "GHSA-869p-cjfg-cm3x",
+    "severity": "high",
+    "cvss_score": 7.5,
+    "summary": "auth0/node-jws Improperly Verifies HMAC Signature",
+    "package": "jws",
+    "vulnerable_version": "< 3.2.3",
+    "first_patched": {
+      "identifier": "3.2.3"
+    },
+    "manifest": "src/user-auth-service/yarn.lock",
+    "scope": "runtime"
+  },
+  {
+    "alert_number": 174,
+    "cve": "CVE-2025-12758",
+    "ghsa": "GHSA-vghf-hv5q-vc2g",
+    "severity": "high",
+    "cvss_score": 7.5,
+    "summary": "Validator is Vulnerable to Incomplete Filtering of One or More Instances of Special Elements",
+    "package": "validator",
+    "vulnerable_version": "< 13.15.22",
+    "first_patched": {
+      "identifier": "13.15.22"
+    },
+    "manifest": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime"
+  },
+  {
+    "alert_number": 170,
+    "cve": "CVE-2025-64756",
+    "ghsa": "GHSA-5j98-mcp5-4vw2",
+    "severity": "high",
+    "cvss_score": 7.5,
+    "summary": "glob CLI: Command injection via -c/--cmd executes matches with shell:true",
+    "package": "glob",
+    "vulnerable_version": ">= 10.2.0, < 10.5.0",
+    "first_patched": {
+      "identifier": "10.5.0"
+    },
+    "manifest": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime"
+  },
+  {
+    "alert_number": 158,
+    "cve": "CVE-2025-56200",
+    "ghsa": "GHSA-9965-vmph-33xx",
+    "severity": "medium",
+    "cvss_score": 6.1,
+    "summary": "validator.js has a URL validation bypass vulnerability in its isURL function",
+    "package": "validator",
+    "vulnerable_version": "< 13.15.20",
+    "first_patched": {
+      "identifier": "13.15.20"
+    },
+    "manifest": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime"
+  },
+  {
+    "alert_number": 183,
+    "cve": null,
+    "ghsa": "GHSA-w37m-7fhw-fmv9",
+    "severity": "medium",
+    "cvss_score": 5.3,
+    "summary": "Next Server Actions Source Code Exposure ",
+    "package": "next",
+    "vulnerable_version": ">= 15.0.0-canary.0, < 15.0.6",
+    "first_patched": {
+      "identifier": "15.0.6"
+    },
+    "manifest": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime"
+  },
+  {
+    "alert_number": 167,
+    "cve": "CVE-2025-64718",
+    "ghsa": "GHSA-mh29-5h37-fv8m",
+    "severity": "medium",
+    "cvss_score": 5.3,
+    "summary": "js-yaml has prototype pollution in merge (<<)",
+    "package": "js-yaml",
+    "vulnerable_version": ">= 4.0.0, < 4.1.1",
+    "first_patched": {
+      "identifier": "4.1.1"
+    },
+    "manifest": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime"
+  },
+  {
+    "alert_number": 166,
+    "cve": "CVE-2025-64718",
+    "ghsa": "GHSA-mh29-5h37-fv8m",
+    "severity": "medium",
+    "cvss_score": 5.3,
+    "summary": "js-yaml has prototype pollution in merge (<<)",
+    "package": "js-yaml",
+    "vulnerable_version": ">= 4.0.0, < 4.1.1",
+    "first_patched": {
+      "identifier": "4.1.1"
+    },
+    "manifest": "package-lock.json",
+    "scope": "development"
+  },
+  {
+    "alert_number": 165,
+    "cve": "CVE-2025-64718",
+    "ghsa": "GHSA-mh29-5h37-fv8m",
+    "severity": "medium",
+    "cvss_score": 5.3,
+    "summary": "js-yaml has prototype pollution in merge (<<)",
+    "package": "js-yaml",
+    "vulnerable_version": ">= 4.0.0, < 4.1.1",
+    "first_patched": {
+      "identifier": "4.1.1"
+    },
+    "manifest": "src/user-simulator/package-lock.json",
+    "scope": "runtime"
+  },
+  {
+    "alert_number": 173,
+    "cve": "CVE-2025-66400",
+    "ghsa": "GHSA-4fh9-h7wg-q85m",
+    "severity": "medium",
+    "cvss_score": 0,
+    "summary": "mdast-util-to-hast has unsanitized class attribute",
+    "package": "mdast-util-to-hast",
+    "vulnerable_version": ">= 13.0.0, < 13.2.1",
+    "first_patched": {
+      "identifier": "13.2.1"
+    },
+    "manifest": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime"
+  }
+]

