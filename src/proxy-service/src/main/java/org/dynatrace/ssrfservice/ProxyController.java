@@ -151,6 +151,11 @@ public class ProxyController {
     )
     public @ResponseBody
     String proxyUrlWithCurl(@RequestParam String url) throws IOException, InterruptedException {
+        // FIXED: Validate URL to prevent SSRF attacks
+        if (!isValidUrl(url)) {
+            throw new IllegalArgumentException("Invalid URL provided");
+        }
+        
         File temporaryJpgFile = new File(String.format("/tmp/img-%d.jpg", System.currentTimeMillis()));
 
         Span curlSpan = tracer.buildSpan("/image")
@@ -229,6 +234,23 @@ public class ProxyController {
             java.net.InetAddress addr = java.net.InetAddress.getByName(host);
             if (addr.isLoopbackAddress() || addr.isLinkLocalAddress() || addr.isSiteLocalAddress()) {
                 return false;
+            }
+            
+            // Block specific IPv4 private ranges
+            byte[] addressBytes = addr.getAddress();
+            if (addressBytes.length == 4) {
+                // 10.0.0.0/8
+                if (addressBytes[0] == 10) {
+                    return false;
+                }
+                // 172.16.0.0/12
+                if (addressBytes[0] == (byte) 172 && (addressBytes[1] & 0xF0) == 16) {
+                    return false;
+                }
+                // 192.168.0.0/16
+                if (addressBytes[0] == (byte) 192 && addressBytes[1] == (byte) 168) {
+                    return false;
+                }
             }
             
             return true;

@@ -53,15 +53,14 @@ public class DatabaseManager {
             if (connection != null) {
                 // FIXED: Use PreparedStatement to prevent SQL injection
                 String selectStatement = "SELECT * FROM bio WHERE user_id = ?;";
-                PreparedStatement statement = connection.prepareStatement(selectStatement);
-                statement.setInt(1, userId);
-                ResultSet rs = statement.executeQuery();
+                try (PreparedStatement statement = connection.prepareStatement(selectStatement)) {
+                    statement.setInt(1, userId);
+                    ResultSet rs = statement.executeQuery();
 
-                if (rs.next()) {
-                    bio = new Bio(rs.getInt("id"), rs.getInt("user_id"), rs.getString("bio_text"));
+                    if (rs.next()) {
+                        bio = new Bio(rs.getInt("id"), rs.getInt("user_id"), rs.getString("bio_text"));
+                    }
                 }
-
-                statement.close();
                 return bio;
             }
         } catch (SQLException e) {
@@ -78,12 +77,12 @@ public class DatabaseManager {
             if (connection != null) {
                 // FIXED: Use PreparedStatement to prevent SQL injection
                 String insertStatement = "INSERT INTO bio (user_id, bio_text) VALUES (?, ?);";
-                PreparedStatement statement = connection.prepareStatement(insertStatement);
-                statement.setInt(1, bio.getUserId());
-                statement.setString(2, bio.getBioText());
-                
-                result = statement.executeUpdate() > 0;
-                statement.close();
+                try (PreparedStatement statement = connection.prepareStatement(insertStatement)) {
+                    statement.setInt(1, bio.getUserId());
+                    statement.setString(2, bio.getBioText());
+                    
+                    result = statement.executeUpdate() > 0;
+                }
             }
         } catch (SQLException e) {
             logger.error("Error in insertBio: ", e);
@@ -99,12 +98,12 @@ public class DatabaseManager {
             if (connection != null) {
                 // FIXED: Use PreparedStatement to prevent SQL injection
                 String updateStatement = "UPDATE bio SET bio_text = ? WHERE user_id = ?";
-                PreparedStatement statement = connection.prepareStatement(updateStatement);
-                statement.setString(1, bio.getBioText());
-                statement.setInt(2, bio.getUserId());
+                try (PreparedStatement statement = connection.prepareStatement(updateStatement)) {
+                    statement.setString(1, bio.getBioText());
+                    statement.setInt(2, bio.getUserId());
 
-                result = statement.executeUpdate() > 0;
-                statement.close();
+                    result = statement.executeUpdate() > 0;
+                }
             }
         } catch (SQLException e) {
             logger.error("Error in updateBio: ", e);
