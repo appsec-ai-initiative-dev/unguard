@@ -39,12 +39,21 @@ namespace AdService.Pages
         ///
         public IActionResult OnGet()
         {
-            if (AdFile.FolderIsEmpty(_appEnvironment.WebRootPath))
+            try
             {
+                if (AdFile.FolderIsEmpty(_appEnvironment.WebRootPath))
+                {
+                    return new EmptyResult();
+                }
+
+                return Page();
+            }
+            catch (Exception)
+            {
+                // If any error occurs while checking files, return empty result
+                // This prevents the service from crashing
                 return new EmptyResult();
             }
-
-            return Page();
         }
 
 
@@ -52,25 +61,39 @@ namespace AdService.Pages
         ///
         public string GetImage()
         {
-            var ads = AdFile.CreateList(_appEnvironment.WebRootPath);
-
-            var currentAd = Request.Cookies["current_ad"];
-
-            int adIndex = ads.FindIndex(ad => ad.Name == currentAd);
-
-            if (adIndex == -1)
+            try
             {
-                adIndex = (new Random()).Next(ads.Count);
-            }
-            else if (++adIndex >= ads.Count)
-            {
-                adIndex = 0;
-            }
+                var ads = AdFile.CreateList(_appEnvironment.WebRootPath);
 
-            string path = Flurl.Url.Combine("/", Environment.GetEnvironmentVariable("API_PATH"), AdFile.FileFolder, ads[adIndex].Name);
+                // If no ads available, return empty string
+                if (ads.Count == 0)
+                {
+                    return string.Empty;
+                }
+
+                var currentAd = Request.Cookies["current_ad"];
+
+                int adIndex = ads.FindIndex(ad => ad.Name == currentAd);
+
+                if (adIndex == -1)
+                {
+                    adIndex = (new Random()).Next(ads.Count);
+                }
+                else if (++adIndex >= ads.Count)
+                {
+                    adIndex = 0;
+                }
+
+                string path = Flurl.Url.Combine("/", Environment.GetEnvironmentVariable("API_PATH"), AdFile.FileFolder, ads[adIndex].Name);
             
-            Response.Cookies.Append("current_ad", ads[adIndex].Name);
-            return path;
+                Response.Cookies.Append("current_ad", ads[adIndex].Name);
+                return path;
+            }
+            catch (Exception)
+            {
+                // If any error occurs, return empty string instead of crashing
+                return string.Empty;
+            }
         }
     }
 }
