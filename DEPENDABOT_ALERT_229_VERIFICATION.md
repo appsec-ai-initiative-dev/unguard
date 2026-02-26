@@ -68,9 +68,9 @@ Since the vulnerability was not detected by Dynatrace Runtime Vulnerability Anal
 
 2. **Transitive Dependency**: The package is an indirect dependency with no direct code references found in the repository
 
-3. **Limited Blast Radius**: The user-simulator component is a testing/simulation tool, not a production-critical service
+3. **Limited Blast Radius**: The user-simulator component is a testing/simulation tool, not a production-critical service.
 
-4. **Dynatrace Validation**: The vulnerability is not loaded in running processes and applications, which significantly reduces its risk and priority
+4. **Dynatrace Validation**: The vulnerability is not loaded in running processes and applications, which significantly reduces its risk and priority.
 
 ## Actions Required
 
