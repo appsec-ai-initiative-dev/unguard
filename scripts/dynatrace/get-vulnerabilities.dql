@@ -1,0 +1,289 @@
+// ==============================================================================
+// DQL Query: Get Active Vulnerabilities from Dynatrace
+// ==============================================================================
+// Purpose: Retrieve all active (OPEN) vulnerabilities with comprehensive details
+//          including Davis assessments, affected entities, and severity levels
+//
+// Key Features:
+// - Proper deduplication to get current vulnerability state
+// - Davis risk assessments (function-in-use, public exploits, etc.)
+// - Affected entity details with human-readable names
+// - Severity-based filtering
+// - CVE and vulnerability metadata
+//
+// Usage: Copy this query into Dynatrace Notebooks or run via API
+// ==============================================================================
+
+// STEP 1: Get all active vulnerabilities with proper deduplication
+// ----------------------------------------------------------------
+// Note: We use dedup to get the latest state of each vulnerability per entity
+// This prevents counting the same vulnerability multiple times over time
+
+fetch security.events, from:now() - 7d
+| filter event.type == "VULNERABILITY_STATE_REPORT_EVENT"
+
+// Critical: Deduplicate to get current state only
+| dedup {vulnerability.display_id, affected_entity.id}, sort: {timestamp desc}
+
+// Filter for active/open vulnerabilities only
+| filter vulnerability.resolution_status == "OPEN"
+
+// Optional: Filter by severity (uncomment to use)
+// | filter vulnerability.severity in ["CRITICAL", "HIGH"]
+
+// Optional: Filter by Davis assessments (uncomment to use)
+// | filter davis.assessment.vulnerable_function_in_use == true
+// | filter davis.assessment.public_exploit_available == true
+
+// STEP 2: Add human-readable entity names and organize fields
+// -----------------------------------------------------------
+| fieldsAdd 
+    // Entity identification
+    entity_name = entityName(affected_entity.id),
+    entity_type = affected_entity.type,
+    
+    // Vulnerability core details
+    vuln_id = vulnerability.display_id,
+    vuln_title = vulnerability.title,
+    severity = vulnerability.severity,
+    cvss_score = vulnerability.cvss_score,
+    
+    // CVE references
+    cve_ids = vulnerability.references.cve,
+    
+    // Davis AI risk assessment
+    davis_risk_level = davis.assessment.risk_level,
+    davis_risk_score = davis.assessment.risk_score,
+    function_in_use = davis.assessment.vulnerable_function_in_use,
+    public_exploit = davis.assessment.public_exploit_available,
+    
+    // Technology details
+    technology = vulnerability.technology,
+    vulnerable_component = vulnerability.vulnerable_component,
+    
+    // Resolution information
+    resolution_status = vulnerability.resolution_status,
+    muted = vulnerability.muted,
+    
+    // Timestamps
+    first_seen = vulnerability.first_seen_timestamp,
+    last_updated = timestamp
+
+// STEP 3: Select final output fields
+// ----------------------------------
+| fields 
+    // Primary identification
+    vuln_id,
+    vuln_title,
+    severity,
+    cvss_score,
+    
+    // Davis assessments (CRITICAL for prioritization)
+    davis_risk_level,
+    davis_risk_score,
+    function_in_use,
+    public_exploit,
+    
+    // Affected entity
+    entity_name,
+    entity_type,
+    affected_entity.id,
+    
+    // CVE and technology
+    cve_ids,
+    technology,
+    vulnerable_component,
+    
+    // Status
+    resolution_status,
+    muted,
+    
+    // Timestamps
+    first_seen,
+    last_updated
+
+// STEP 4: Sort by priority (Davis risk score, then CVSS)
+// -------------------------------------------------------
+| sort davis_risk_score desc, cvss_score desc
+
+// Optional: Limit results (remove or adjust as needed)
+// | limit 100
+
+
+// ==============================================================================
+// ALTERNATIVE QUERIES FOR SPECIFIC USE CASES
+// ==============================================================================
+
+// Query 2: Get vulnerabilities grouped by CVE
+// -------------------------------------------
+/*
+fetch security.events, from:now() - 7d
+| filter event.type == "VULNERABILITY_STATE_REPORT_EVENT"
+| dedup {vulnerability.display_id, affected_entity.id}, sort: {timestamp desc}
+| filter vulnerability.resolution_status == "OPEN"
+| expand vulnerability.references.cve
+| filter isNotNull(vulnerability.references.cve)
+| summarize 
+    vulnerability_count = count(),
+    affected_entities = countDistinct(affected_entity.id),
+    highest_cvss = max(vulnerability.cvss_score),
+    entity_list = collectDistinct(entityName(affected_entity.id), maxLength: 50),
+    by: {
+        cve = vulnerability.references.cve,
+        severity = vulnerability.severity,
+        technology = vulnerability.technology
+    }
+| sort highest_cvss desc
+*/
+
+// Query 3: Get vulnerabilities with function in use (HIGH PRIORITY)
+// -----------------------------------------------------------------
+/*
+fetch security.events, from:now() - 7d
+| filter event.type == "VULNERABILITY_STATE_REPORT_EVENT"
+| dedup {vulnerability.display_id, affected_entity.id}, sort: {timestamp desc}
+| filter vulnerability.resolution_status == "OPEN"
+| filter davis.assessment.vulnerable_function_in_use == true
+| fieldsAdd 
+    vuln_id = vulnerability.display_id,
+    entity_name = entityName(affected_entity.id),
+    severity = vulnerability.severity,
+    cvss_score = vulnerability.cvss_score,
+    davis_score = davis.assessment.risk_score,
+    cve_ids = vulnerability.references.cve,
+    public_exploit = davis.assessment.public_exploit_available
+| fields vuln_id, entity_name, severity, cvss_score, davis_score, cve_ids, public_exploit
+| sort davis_score desc
+*/
+
+// Query 4: Vulnerability summary by severity
+// ------------------------------------------
+/*
+fetch security.events, from:now() - 7d
+| filter event.type == "VULNERABILITY_STATE_REPORT_EVENT"
+| dedup {vulnerability.display_id, affected_entity.id}, sort: {timestamp desc}
+| filter vulnerability.resolution_status == "OPEN"
+| summarize 
+    total_vulnerabilities = count(),
+    total_entities = countDistinct(affected_entity.id),
+    function_in_use_count = countIf(davis.assessment.vulnerable_function_in_use == true),
+    public_exploit_count = countIf(davis.assessment.public_exploit_available == true),
+    avg_cvss = avg(vulnerability.cvss_score),
+    max_davis_score = max(davis.assessment.risk_score),
+    by: {severity = vulnerability.severity}
+| sort severity asc
+*/
+
+// Query 5: Get vulnerabilities for a specific entity
+// --------------------------------------------------
+/*
+fetch security.events, from:now() - 7d
+| filter event.type == "VULNERABILITY_STATE_REPORT_EVENT"
+| filter affected_entity.id == "PROCESS_GROUP-XXXXXXXXXXXXX"  // Replace with actual entity ID
+| dedup {vulnerability.display_id, affected_entity.id}, sort: {timestamp desc}
+| filter vulnerability.resolution_status == "OPEN"
+| fieldsAdd 
+    vuln_id = vulnerability.display_id,
+    title = vulnerability.title,
+    severity = vulnerability.severity,
+    cvss_score = vulnerability.cvss_score,
+    davis_score = davis.assessment.risk_score,
+    function_in_use = davis.assessment.vulnerable_function_in_use,
+    cve_ids = vulnerability.references.cve
+| fields vuln_id, title, severity, cvss_score, davis_score, function_in_use, cve_ids
+| sort davis_score desc
+*/
+
+// Query 6: Get vulnerabilities by technology (e.g., Java, Python, Node.js)
+// -------------------------------------------------------------------------
+/*
+fetch security.events, from:now() - 7d
+| filter event.type == "VULNERABILITY_STATE_REPORT_EVENT"
+| dedup {vulnerability.display_id, affected_entity.id}, sort: {timestamp desc}
+| filter vulnerability.resolution_status == "OPEN"
+| filter vulnerability.technology == "JAVA"  // Change to: PYTHON, NODEJS, DOTNET, etc.
+| summarize 
+    vulnerability_count = count(),
+    critical_count = countIf(vulnerability.severity == "CRITICAL"),
+    high_count = countIf(vulnerability.severity == "HIGH"),
+    function_in_use = countIf(davis.assessment.vulnerable_function_in_use == true),
+    affected_entities = countDistinct(affected_entity.id),
+    by: {
+        vulnerable_component = vulnerability.vulnerable_component,
+        severity = vulnerability.severity
+    }
+| sort vulnerability_count desc
+*/
+
+// ==============================================================================
+// IMPORTANT FIELD REFERENCE
+// ==============================================================================
+/*
+Key Fields Available in VULNERABILITY_STATE_REPORT_EVENT:
+
+VULNERABILITY CORE:
+- vulnerability.display_id          : Unique vulnerability identifier
+- vulnerability.title               : Human-readable vulnerability name
+- vulnerability.severity            : CRITICAL, HIGH, MEDIUM, LOW
+- vulnerability.cvss_score          : CVSS score (0-10)
+- vulnerability.technology          : JAVA, PYTHON, NODEJS, DOTNET, GO, etc.
+- vulnerability.vulnerable_component: Package/library name with version
+- vulnerability.resolution_status   : OPEN, RESOLVED, INVALID
+- vulnerability.muted               : Boolean - is vulnerability muted?
+
+DAVIS AI ASSESSMENTS (CRITICAL for prioritization):
+- davis.assessment.risk_level       : Davis-adjusted risk level
+- davis.assessment.risk_score       : Davis risk score (0-10)
+- davis.assessment.vulnerable_function_in_use : Boolean - is vulnerable code executed?
+- davis.assessment.public_exploit_available   : Boolean - is public exploit known?
+- davis.assessment.reachable_data_asset       : Boolean - can access sensitive data?
+
+CVE REFERENCES:
+- vulnerability.references.cve      : Array of CVE IDs (e.g., ["CVE-2023-12345"])
+
+AFFECTED ENTITY:
+- affected_entity.id                : Dynatrace entity ID (PROCESS_GROUP-XXX)
+- affected_entity.type              : Entity type (PROCESS_GROUP, SERVICE, etc.)
+- entityName(affected_entity.id)    : Human-readable entity name
+
+TIMESTAMPS:
+- vulnerability.first_seen_timestamp: When first detected
+- timestamp                         : Latest update time
+
+*/
+
+// ==============================================================================
+// BEST PRACTICES
+// ==============================================================================
+/*
+1. ALWAYS use deduplication:
+   | dedup {vulnerability.display_id, affected_entity.id}, sort: {timestamp desc}
+   
+2. Query timeframe:
+   - Use 7 days for regular vulnerability scans
+   - Extend to 30 days if scans are infrequent
+   
+3. Prioritization logic:
+   Priority 1: function_in_use == true AND public_exploit == true
+   Priority 2: function_in_use == true AND severity in ["CRITICAL", "HIGH"]
+   Priority 3: davis.assessment.risk_score > 7.0
+   Priority 4: severity in ["CRITICAL", "HIGH"]
+   
+4. Davis assessments are CRITICAL:
+   - vulnerable_function_in_use: Confirms code is actually executed
+   - public_exploit_available: Known exploits exist in the wild
+   - These override base CVSS scores for real-world risk
+   
+5. Cross-reference with CVEs:
+   - Use vulnerability.references.cve to match with external scanners
+   - Expand CVE array when needed: | expand vulnerability.references.cve
+   
+6. Entity context matters:
+   - Always include entityName() for human-readable names
+   - Group by entity to understand blast radius
+   
+7. Avoid common pitfalls:
+   - DON'T aggregate over time without dedup (will count duplicates)
+   - DON'T ignore Davis assessments (they provide runtime context)
+   - DON'T query only by CVSS (vulnerable_function_in_use is critical)
+*/
