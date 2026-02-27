@@ -1,0 +1,2 @@
+# Requirements for Unguard utility scripts
+requests>=2.31.0
