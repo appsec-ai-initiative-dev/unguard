@@ -21,7 +21,7 @@
     "opentracing": "^0.14.5",
     "pug": "2.0.0-beta11",
     "readline-sync": "^1.4.10",
-    "bcrypt": "^5.0.1"
+    "bcrypt": "^6.0.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.12",
