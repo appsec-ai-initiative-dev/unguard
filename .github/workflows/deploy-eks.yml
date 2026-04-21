@@ -1,0 +1,94 @@
+name: Deploy to EKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: 'Helm chart version to deploy (e.g. 0.23.0-cc934f4). Leave blank to use latest.'
+        required: false
+        default: ''
+      cluster_name:
+        description: 'EKS cluster name'
+        required: false
+        default: 'appsec-ai-test'
+      aws_region:
+        description: 'AWS region'
+        required: false
+        default: 'us-east-1'
+
+permissions:
+  id-token: write
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: ${{ secrets.AWS_ECR_ROLE_ARN }}
+          role-session-name: GitHubActionsEKSDeploy
+
+      - name: Register this role as an EKS access entry
+        run: |
+          # Convert STS assumed-role ARN -> IAM role ARN
+          STS_ARN=$(aws sts get-caller-identity --query Arn --output text)
+          ROLE_ARN=$(echo "$STS_ARN" | sed 's|:sts:|:iam:|; s|:assumed-role/|:role/|; s|/[^/]*$||')
+          echo "Registering $ROLE_ARN on cluster ${{ inputs.cluster_name }}"
+          aws eks create-access-entry \
+            --cluster-name ${{ inputs.cluster_name }} \
+            --principal-arn "$ROLE_ARN" \
+            --region ${{ inputs.aws_region }} 2>/dev/null \
+            && echo "Access entry created" || echo "Access entry already exists, continuing"
+          aws eks associate-access-policy \
+            --cluster-name ${{ inputs.cluster_name }} \
+            --principal-arn "$ROLE_ARN" \
+            --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
+            --access-scope type=cluster \
+            --region ${{ inputs.aws_region }} 2>/dev/null \
+            && echo "Policy associated" || echo "Policy already associated, continuing"
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ inputs.cluster_name }} \
+            --region ${{ inputs.aws_region }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TOKEN="${GHCR_PAT:-$GITHUB_TOKEN}"
+          echo "$TOKEN" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Resolve chart version and namespace
+        id: chart
+        env:
+          GHCR_NAMESPACE: ${{ secrets.GHCR_NAMESPACE }}
+        run: |
+          NS="${GHCR_NAMESPACE:-${{ github.repository }}}"
+          NS=$(echo "$NS" | tr '[:upper:]' '[:lower:]')
+          VERSION="${{ inputs.chart_version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(helm show chart "oci://ghcr.io/$NS/unguard" 2>/dev/null | grep '^version:' | awk '{print $2}')
+            echo "Resolved latest chart version: $VERSION"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "namespace=$NS" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install unguard \
+            "oci://ghcr.io/${{ steps.chart.outputs.namespace }}/unguard" \
+            --version "${{ steps.chart.outputs.version }}" \
+            --namespace unguard \
+            --create-namespace \
+            --set aws.enabled=true \
+            --wait --timeout 10m
