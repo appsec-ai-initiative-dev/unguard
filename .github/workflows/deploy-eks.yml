@@ -107,6 +107,7 @@ jobs:
             --create-namespace \
             --set aws.enabled=true \
             --set envoyProxy.service.type=LoadBalancer \
+            --force-conflicts \
             --wait --timeout 10m
 
       - name: Print app URL
