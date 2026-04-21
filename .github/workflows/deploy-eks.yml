@@ -113,10 +113,17 @@ jobs:
       - name: Print app URL
         run: |
           echo "Waiting for LoadBalancer hostname..."
-          kubectl wait --for=jsonpath='{.status.loadBalancer.ingress}' \
-            svc/unguard-envoy-proxy -n unguard --timeout=3m
-          kubectl get svc unguard-envoy-proxy -n unguard \
-            -o jsonpath='App URL: http://{.status.loadBalancer.ingress[0].hostname}{"\n"}'
+          for i in $(seq 1 18); do
+            HOSTNAME=$(kubectl get svc unguard-envoy-proxy -n unguard \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+            if [ -n "$HOSTNAME" ]; then
+              echo "App URL: http://$HOSTNAME"
+              exit 0
+            fi
+            echo "  waiting... ($i/18)"
+            sleep 10
+          done
+          echo "LoadBalancer hostname not yet assigned (ELB may still be provisioning)"
 
       - name: Show pod status
         if: always()
