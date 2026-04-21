@@ -108,6 +108,16 @@ jobs:
             --set aws.enabled=true \
             --wait --timeout 10m
 
+      - name: Expose via LoadBalancer
+        run: |
+          kubectl patch svc unguard-envoy-proxy -n unguard \
+            -p '{"spec":{"type":"LoadBalancer"}}'
+          echo "Waiting for external IP..."
+          kubectl wait --for=jsonpath='{.status.loadBalancer.ingress}' \
+            svc/unguard-envoy-proxy -n unguard --timeout=3m
+          kubectl get svc unguard-envoy-proxy -n unguard \
+            -o jsonpath='App URL: http://{.status.loadBalancer.ingress[0].hostname}{"\n"}'
+
       - name: Show pod status
         if: always()
         run: |
