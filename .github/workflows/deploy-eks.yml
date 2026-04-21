@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       chart_version:
-        description: 'Helm chart version to deploy (e.g. 0.23.0-cc934f4). Leave blank to use latest.'
-        required: false
-        default: ''
+        description: 'Helm chart version to deploy (e.g. 0.23.0-cc934f4)'
+        required: true
+        default: '0.23.0-cc934f4'
       cluster_name:
         description: 'EKS cluster name'
         required: false
@@ -68,19 +68,14 @@ jobs:
           TOKEN="${GHCR_PAT:-$GITHUB_TOKEN}"
           echo "$TOKEN" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Resolve chart version and namespace
+      - name: Resolve chart namespace
         id: chart
         env:
           GHCR_NAMESPACE: ${{ secrets.GHCR_NAMESPACE }}
         run: |
           NS="${GHCR_NAMESPACE:-${{ github.repository }}}"
           NS=$(echo "$NS" | tr '[:upper:]' '[:lower:]')
-          VERSION="${{ inputs.chart_version }}"
-          if [ -z "$VERSION" ]; then
-            VERSION=$(helm show chart "oci://ghcr.io/$NS/unguard" 2>/dev/null | grep '^version:' | awk '{print $2}')
-            echo "Resolved latest chart version: $VERSION"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=${{ inputs.chart_version }}" >> "$GITHUB_OUTPUT"
           echo "namespace=$NS" >> "$GITHUB_OUTPUT"
 
       - name: Deploy with Helm
