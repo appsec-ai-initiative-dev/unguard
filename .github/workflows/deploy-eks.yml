@@ -124,7 +124,8 @@ jobs:
           echo "=== Pods ==="
           kubectl get pods -n unguard -o wide
           echo ""
-          echo "=== Not-ready pods ==="
-          kubectl get pods -n unguard --field-selector=status.phase!=Running -o name 2>/dev/null | \
-            xargs -r -I{} kubectl describe {} -n unguard | \
-            grep -A 10 "Events:\|Reason:\|Message:"
+          echo "=== Not-ready pods (excluding cronjobs) ==="
+          kubectl get pods -n unguard -o json | \
+            jq -r '.items[] | select(.status.phase != "Running" and (.metadata.ownerReferences[]?.kind != "Job")) | .metadata.name' 2>/dev/null | \
+            xargs -r -I{} kubectl describe pod {} -n unguard | \
+            grep -A 10 "Events:\|Reason:\|Message:" || true
