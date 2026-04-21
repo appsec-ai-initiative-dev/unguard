@@ -83,7 +83,6 @@ jobs:
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
           helm upgrade --install unguard-mariadb bitnami/mariadb \
-            --version 11.5.7 \
             --namespace unguard \
             --create-namespace \
             --set primary.persistence.enabled=false \
