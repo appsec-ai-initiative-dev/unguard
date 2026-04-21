@@ -86,4 +86,15 @@ jobs:
             --namespace unguard \
             --create-namespace \
             --set aws.enabled=true \
-            --wait --timeout 10m
+            --wait --timeout 20m
+
+      - name: Show pod status
+        if: always()
+        run: |
+          echo "=== Pods ==="
+          kubectl get pods -n unguard -o wide
+          echo ""
+          echo "=== Not-ready pods ==="
+          kubectl get pods -n unguard --field-selector=status.phase!=Running -o name 2>/dev/null | \
+            xargs -r -I{} kubectl describe {} -n unguard | \
+            grep -A 10 "Events:\|Reason:\|Message:"
