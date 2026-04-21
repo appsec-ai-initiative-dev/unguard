@@ -78,6 +78,17 @@ jobs:
           echo "version=${{ inputs.chart_version }}" >> "$GITHUB_OUTPUT"
           echo "namespace=$NS" >> "$GITHUB_OUTPUT"
 
+      - name: Install MariaDB (prerequisite)
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+          helm upgrade --install unguard-mariadb bitnami/mariadb \
+            --version 11.5.7 \
+            --namespace unguard \
+            --create-namespace \
+            --set primary.persistence.enabled=false \
+            --wait --timeout 5m
+
       - name: Deploy with Helm
         run: |
           helm upgrade --install unguard \
@@ -86,7 +97,7 @@ jobs:
             --namespace unguard \
             --create-namespace \
             --set aws.enabled=true \
-            --wait --timeout 20m
+            --wait --timeout 10m
 
       - name: Show pod status
         if: always()
