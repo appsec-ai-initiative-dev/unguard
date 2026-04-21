@@ -82,11 +82,19 @@ jobs:
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
+          # If an existing release has a password in the secret, reuse it to avoid upgrade failures
+          EXTRA_ARGS=""
+          if kubectl get secret unguard-mariadb -n unguard &>/dev/null; then
+            EXISTING_PW=$(kubectl get secret unguard-mariadb -n unguard \
+              -o jsonpath="{.data.mariadb-root-password}" | base64 -d)
+            EXTRA_ARGS="--set auth.rootPassword=${EXISTING_PW}"
+          fi
           helm upgrade --install unguard-mariadb bitnami/mariadb \
             --namespace unguard \
             --create-namespace \
             --set primary.persistence.enabled=false \
-            --wait --timeout 5m
+            --wait --timeout 5m \
+            $EXTRA_ARGS
 
       - name: Deploy with Helm
         run: |
