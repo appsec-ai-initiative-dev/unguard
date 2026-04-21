@@ -82,13 +82,15 @@ jobs:
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
-          # If an existing release has a password in the secret, reuse it to avoid upgrade failures
+          # Reuse existing password if secret exists
           EXTRA_ARGS=""
           if kubectl get secret unguard-mariadb -n unguard &>/dev/null; then
             EXISTING_PW=$(kubectl get secret unguard-mariadb -n unguard \
               -o jsonpath="{.data.mariadb-root-password}" | base64 -d)
             EXTRA_ARGS="--set auth.rootPassword=${EXISTING_PW}"
           fi
+          # Delete the StatefulSet if it exists so Helm can recreate with updated spec
+          kubectl delete statefulset unguard-mariadb -n unguard --ignore-not-found
           helm upgrade --install unguard-mariadb bitnami/mariadb \
             --namespace unguard \
             --create-namespace \
