@@ -106,13 +106,12 @@ jobs:
             --namespace unguard \
             --create-namespace \
             --set aws.enabled=true \
+            --set envoyProxy.service.type=LoadBalancer \
             --wait --timeout 10m
 
-      - name: Expose via LoadBalancer
+      - name: Print app URL
         run: |
-          kubectl patch svc unguard-envoy-proxy -n unguard \
-            -p '{"spec":{"type":"LoadBalancer"}}'
-          echo "Waiting for external IP..."
+          echo "Waiting for LoadBalancer hostname..."
           kubectl wait --for=jsonpath='{.status.loadBalancer.ingress}' \
             svc/unguard-envoy-proxy -n unguard --timeout=3m
           kubectl get svc unguard-envoy-proxy -n unguard \
