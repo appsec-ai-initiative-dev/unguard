@@ -88,7 +88,13 @@ jobs:
             --set serviceAccount.create=true \
             --set serviceAccount.name=aws-load-balancer-controller \
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::016886142452:role/AmazonEKSLoadBalancerControllerRole \
-            --wait --timeout 3m
+            --set replicaCount=1 \
+            --wait --timeout 5m || {
+              echo "=== LB Controller pod status ==="
+              kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller -o wide
+              kubectl describe pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller | tail -30
+              exit 1
+            }
 
       - name: Install MariaDB (prerequisite)
         run: |
