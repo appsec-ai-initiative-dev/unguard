@@ -126,13 +126,17 @@ jobs:
             --version "${{ steps.chart.outputs.version }}" \
             --namespace unguard \
             --create-namespace \
-            --set aws.enabled=true \
+            --set localDev.enabled=false \
             --set envoyProxy.service.type=LoadBalancer \
-            --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-type=external" \
-            --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type=instance" \
-            --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-scheme=internet-facing" \
             --force-conflicts \
             --wait --timeout 10m
+
+      - name: Annotate service for NLB
+        run: |
+          kubectl annotate svc unguard-envoy-proxy -n unguard --overwrite \
+            service.beta.kubernetes.io/aws-load-balancer-type=external \
+            service.beta.kubernetes.io/aws-load-balancer-nlb-target-type=instance \
+            service.beta.kubernetes.io/aws-load-balancer-scheme=internet-facing
 
       - name: Print app URL
         run: |
