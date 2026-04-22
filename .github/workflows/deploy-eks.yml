@@ -92,7 +92,9 @@ jobs:
             --wait --timeout 5m || {
               echo "=== LB Controller pod status ==="
               kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller -o wide
-              kubectl describe pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller | tail -30
+              echo "=== LB Controller logs ==="
+              kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller --tail=50 --previous 2>/dev/null || \
+              kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller --tail=50 2>/dev/null || true
               exit 1
             }
 
