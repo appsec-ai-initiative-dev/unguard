@@ -89,6 +89,7 @@ jobs:
             --set serviceAccount.name=aws-load-balancer-controller \
             --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::016886142452:role/AmazonEKSLoadBalancerControllerRole \
             --set replicaCount=1 \
+            --set vpcId=vpc-0ad0ebeebac2fa73f \
             --wait --timeout 5m || {
               echo "=== LB Controller pod status ==="
               kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller -o wide
