@@ -9,6 +9,9 @@ group = 'org.dynatrace'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = '1.8'
 
+// CVE-2022-25857: Uncontrolled Resource Consumption in snakeyaml < 1.31
+ext['snakeyaml.version'] = '1.33'
+
 repositories {
 	mavenCentral()
 }
