@@ -23,7 +23,7 @@ development speed boost.
 
 ### Prerequisites
 
-* [Have GO installed locally](https://go.dev/doc/install)
+* [Have GO 1.25 or newer installed locally](https://go.dev/doc/install)
 * Setup IntelliJ
     * [Install Go Plugin](https://www.jetbrains.com/help/idea/go-plugin.html)
     * [Configure GO_ROOT and GO_PATH](https://www.jetbrains.com/help/idea/configuring-goroot-and-gopath.html#goroot)
