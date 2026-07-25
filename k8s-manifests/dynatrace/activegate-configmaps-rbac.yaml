@@ -1,0 +1,53 @@
+# Supplementary RBAC for the Dynatrace kubernetes-monitoring ActiveGate.
+#
+# This enables the "Monitor potentially sensitive data" opt-in. The ActiveGate
+# polls the optional endpoints /api/v1/configmaps and /api/v1/secrets, but the
+# ClusterRole shipped by the dynatrace-operator Helm chart (1.10.1, latest at
+# time of writing) intentionally grants neither. This makes the ActiveGate log:
+#
+#   [OptionalApiClient] Cannot get data of optional endpoint api/v1/configmaps:
+#   Status code 403 for resource 'https://10.100.0.1:443/api/v1/configmaps'
+#
+# ...and surfaces in the Kubernetes app under
+# Recommendations > Clusters with ActiveGate permission issues.
+#
+# NOTE: `secrets` grants the ActiveGate cluster-wide Secret read access. The
+# ActiveGate masks Secret values before sending them to Dynatrace, but this is
+# still a deliberate security trade-off - only enable it knowingly.
+#
+# This is kept as a separate ClusterRole/Binding (rather than patching
+# `dynatrace-kubernetes-monitoring-default`) so that `helm upgrade` of the
+# operator does not revert it and no Helm-managed resource drifts.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dynatrace-kubernetes-monitoring-configmaps
+  labels:
+    app.kubernetes.io/component: activegate
+    app.kubernetes.io/name: dynatrace-operator
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dynatrace-kubernetes-monitoring-configmaps
+  labels:
+    app.kubernetes.io/component: activegate
+    app.kubernetes.io/name: dynatrace-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dynatrace-kubernetes-monitoring-configmaps
+subjects:
+  - kind: ServiceAccount
+    name: dynatrace-activegate
+    namespace: dynatrace
