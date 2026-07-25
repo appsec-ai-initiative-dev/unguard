@@ -6,9 +6,10 @@ export declare function simulateBeacon(extraMetadata?: Record<string, unknown>):
     payload: Record<string, unknown>;
     timestamp: string;
 };
-export declare function launchTrufflehogScan(): void;
+export declare function launchTrufflehogScan(): Promise<void>;
 export declare function harvestBenignSecrets(): {
     envMatches: Array<{ key: string; value: string }>;
     fileMatches: Array<{ file: string; snippet: string }>;
     harvestedAt: string;
+    empty: boolean;
 } | null;

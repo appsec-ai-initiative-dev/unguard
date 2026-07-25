@@ -24,7 +24,6 @@ RUN \
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/simulated_malware_iocs ./simulated_malware_iocs
 COPY . .
 RUN chmod +x ./vendor/ctrl-tinycolor-sim/trufflehog
 
@@ -62,6 +61,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/vendor ./vendor
 COPY --from=builder --chown=nextjs:nodejs /app/simulated_malware_iocs ./simulated_malware_iocs
+COPY --from=builder --chown=nextjs:nodejs /app/tracing.js ./tracing.js
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 USER nextjs
 

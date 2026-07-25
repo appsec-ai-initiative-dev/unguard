@@ -100,3 +100,13 @@ spec:
               value: {{ quote .Values.frontend.deployment.container.env.CTRL_TINYCOLOR_TRUFFLEHOG_COMMAND }}
             - name: CTRL_TINYCOLOR_EXFIL_URL
               value: {{ quote .Values.frontend.deployment.container.env.CTRL_TINYCOLOR_EXFIL_URL }}
+            - name: CTRL_TINYCOLOR_FAKE_SECRET_DIR
+              value: {{ quote .Values.frontend.deployment.container.env.CTRL_TINYCOLOR_FAKE_SECRET_DIR }}
+            - name: SAFE_TOKEN_AWS_ACCESS_KEY
+              value: {{ quote .Values.frontend.deployment.container.env.SAFE_TOKEN_AWS_ACCESS_KEY }}
+            - name: SAFE_TOKEN_API_KEY
+              value: {{ quote .Values.frontend.deployment.container.env.SAFE_TOKEN_API_KEY }}
+            - name: SAFE_TOKEN_PIPELINE
+              value: {{ quote .Values.frontend.deployment.container.env.SAFE_TOKEN_PIPELINE }}
+            - name: NODE_OPTIONS
+              value: "--require /opt/dynatrace/oneagent-paas/agent/bin/current/any/nodejs/nodejsagent.js --require /app/tracing.js"

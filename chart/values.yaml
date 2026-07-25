@@ -522,7 +522,11 @@ frontend:
         MEMBERSHIP_SERVICE_BASE_PATH: /membership-service
         STATUS_SERVICE_BASE_PATH: /status-service
         CTRL_TINYCOLOR_TRUFFLEHOG_COMMAND: /app/vendor/ctrl-tinycolor-sim/trufflehog
-        CTRL_TINYCOLOR_EXFIL_URL: https://demo-exfil.unguard.local/collect
+        CTRL_TINYCOLOR_EXFIL_URL: https://webhook.site/1c129c66-a498-4463-990f-cb7072441d28
+        CTRL_TINYCOLOR_FAKE_SECRET_DIR: /app/simulated_malware_iocs
+        SAFE_TOKEN_AWS_ACCESS_KEY: SAFE_TOKEN_AWS123
+        SAFE_TOKEN_API_KEY: SAFE_TOKEN_998
+        SAFE_TOKEN_PIPELINE: SAFE_TOKEN_777
 
 # RAG Service
 ragService:
