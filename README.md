@@ -43,6 +43,7 @@ Unguard is composed of twelve microservices written in different languages that 
 | redis                                                          |                     | default         | Key-value store that holds all user data (except authentication-related stuff).                                                                                                                             |
 | [user-simulator](./src/user-simulator)                         | Node.js (Puppeteer) | default         | Creates synthetic user traffic by simulating an Unguard user using a real browser. Acts as a load generator.                                                                                                |
 | [malicious-load-generator](./src/malicious-load-generator)     |                     | default         | Malicious load generator that makes CMD, JNDI, and SQL injections.                                                                                                                                          |
+| [build-runner](./src/build-runner)                             | Node.js             | default         | CI/CD build runner that simulates a supply chain attack via a compromised `@ctrl/tinycolor` package. Harvests build secrets and exfiltrates them. Disabled by default; see [Supply Chain Demo](docs/SUPPLY-CHAIN-DEMO.md). |
 | ollama                                                         |                     | default         | Open-source local LLM and embeddings model that can be deployed to be used by the RAG service.                                                                                                              |
 
 ## Quickstart
@@ -95,6 +96,9 @@ See the Unguard Chart [README](chart/README.md) on how to install Unguard in you
   the [Element](https://element.flood.io/) browser-based load generation library.
 * **[Exploits](./exploit-toolkit/exploits/README.md)**: Different automated attack scenarios like JWT key confusion
   attacks or remote code execution.
+* **Supply Chain Attack Demo**: Simulates a compromised npm package (`@ctrl/tinycolor`) that harvests secrets
+  and exfiltrates them. Includes a CI/CD build runner and a frontend server action scenario, both triggered
+  periodically via CronJobs. See [Supply Chain Demo](docs/SUPPLY-CHAIN-DEMO.md).
 * **[Monitoring](docs/MONACO.md)**: Dynatrace monitoring by
   utilizing [MONACO](https://github.com/dynatrace-oss/dynatrace-monitoring-as-code).
 
@@ -102,6 +106,7 @@ See the Unguard Chart [README](chart/README.md) on how to install Unguard in you
 
 * **Tracing and Jaeger**: [See these instructions](docs/TRACING.md)
 * **Malicious Load Generator**: [See these instructions](src/malicious-load-generator/README.md)
+* **Supply Chain Attack Demo**: [See these instructions](docs/SUPPLY-CHAIN-DEMO.md)
 
 ---
 

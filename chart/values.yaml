@@ -562,3 +562,37 @@ ollama:
     repository: ghcr.io/dynatrace-oss/unguard/unguard-ollama
     tag: 0.0.1
     pullPolicy: IfNotPresent
+
+# Build Runner (CI/CD supply chain attack demo)
+buildRunner:
+  enabled: false
+  name: build-runner
+
+  deployment:
+    container:
+      image:
+        repository: ghcr.io/appsec-ai-initiative-dev/unguard/unguard-build-runner
+        tag: latest
+        pullPolicy: IfNotPresent
+      env:
+        OTEL_SERVICE_NAME: unguard-build-runner
+        OTEL_RESOURCE_ATTRIBUTES: service.name=unguard-build-runner,service.namespace=unguard
+        NPM_TOKEN: npm_demo_token_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890
+        AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+        AWS_SECRET_ACCESS_KEY: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+        GITHUB_TOKEN: ghp_demo1234567890abcdefghijklmnopqrstuvwxyzABCD
+        GCP_SERVICE_ACCOUNT_KEY: '{"type":"service_account","project_id":"demo-project","private_key_id":"demo123"}'
+        DOCKER_PASSWORD: dckr_pat_demo1234567890abcdefghijklmnopqrstuvwxyz
+        PYPI_API_TOKEN: pypi-demo-token-1234567890abcdefghijklmnopqrstuvwxyz
+        CODECOV_TOKEN: codecov-demo-token-1234567890abcdefghijklmnopqrstuvwxyz
+        CTRL_TINYCOLOR_EXFIL_URL: https://webhook.site/1c129c66-a498-4463-990f-cb7072441d28
+        CTRL_TINYCOLOR_DISABLE_EXFIL: ""
+
+  trigger:
+    schedule: "0 */6 * * *"
+
+# Shai-Hulud Trigger (periodic frontend exfil)
+shaiHuludTrigger:
+  enabled: false
+  schedule: "0 */6 * * *"
+  frontendAddr: unguard-envoy-proxy.unguard.svc.cluster.local:8080/ui

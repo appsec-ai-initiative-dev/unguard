@@ -100,6 +100,10 @@ helm install unguard  oci://ghcr.io/dynatrace-oss/unguard/chart/unguard --versio
 | `mariaDB.serviceName`            | Expected release-name of the MariaDB installation by Unguard              | `unguard-mariadb` |
 | `ragService.enabled`             | Deploys the rag service (together with the feedback ingestion service)    | `false`           |
 | `ollama.enabled`                 | Deploys an Ollama instance to be used by the rag-service                  | `false`           |
+| `buildRunner.enabled`            | Deploys the CI/CD build runner supply chain attack demo                   | `false`           |
+| `buildRunner.trigger.schedule`   | CronJob schedule for periodic build-runner exfil triggers                 | `0 */6 * * *`     |
+| `shaiHuludTrigger.enabled`       | Deploys the CronJob that triggers the frontend shai-hulud exfil           | `false`           |
+| `shaiHuludTrigger.schedule`      | CronJob schedule for periodic frontend exfil triggers                     | `0 */6 * * *`     |
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
@@ -163,6 +167,25 @@ To also install Jaeger tracing follow the [TRACING](../docs/TRACING.md#jaeger-in
 ```sh
 helm install unguard oci://ghcr.io/dynatrace-oss/unguard/chart/unguard -f ./chart/tracing.yaml
 ```
+
+## Supply Chain Attack Demo
+
+Unguard includes a supply chain attack demo that simulates a compromised npm package (`@ctrl/tinycolor`) harvesting secrets and exfiltrating them to an attacker-controlled endpoint. The demo has two scenarios, both triggered periodically via CronJobs:
+
+- **Build runner** (CI/CD): A build worker installs the compromised package, which harvests build secrets from environment variables.
+- **Frontend server action** (runtime): A Next.js server action triggers the exfiltration within a traced request context.
+
+Both scenarios generate OpenTelemetry traces that the Dynatrace OneAgent bridge forwards to Grail. See [docs/SUPPLY-CHAIN-DEMO.md](../docs/SUPPLY-CHAIN-DEMO.md) for full details.
+
+To enable both scenarios:
+
+```sh
+helm install unguard ./chart \
+  --set buildRunner.enabled=true \
+  --set shaiHuludTrigger.enabled=true
+```
+
+The CronJobs trigger the exfiltration every 6 hours by default. Adjust the schedule via `buildRunner.trigger.schedule` and `shaiHuludTrigger.schedule`.
 
 ## License
 

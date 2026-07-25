@@ -1,0 +1,17 @@
+{
+  "name": "@ctrl/tinycolor",
+  "version": "3.6.0-sim",
+  "description": "Simulated fork of @ctrl/tinycolor for supply-chain detection demo.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "private": true,
+  "keywords": [
+    "tinycolor",
+    "supply-chain",
+    "simulation"
+  ],
+  "scripts": {
+    "postinstall": "node ./postinstall.js"
+  }
+}

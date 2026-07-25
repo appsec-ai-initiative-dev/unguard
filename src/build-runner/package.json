@@ -1,0 +1,19 @@
+{
+  "name": "unguard-build-runner",
+  "version": "1.0.0",
+  "description": "Simulated CI/CD build runner for supply chain attack demo",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/sdk-trace-node": "1.28.0",
+    "@opentelemetry/resources": "1.28.0",
+    "@opentelemetry/semantic-conventions": "1.28.0",
+    "@opentelemetry/instrumentation": "0.54.0",
+    "@opentelemetry/instrumentation-http": "0.54.0",
+    "@opentelemetry/instrumentation-undici": "0.31.0",
+    "@opentelemetry/sdk-trace-base": "1.28.0"
+  }
+}
