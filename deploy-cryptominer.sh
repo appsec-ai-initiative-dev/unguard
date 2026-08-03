@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SIMULATOR_PATH="${SIMULATOR_PATH:-$SCRIPT_DIR/exploit-toolkit/exploits/cryptominer/cryptominer_simulator.py}"
 CONFIG_PATH="${CONFIG_PATH:-$SCRIPT_DIR/exploit-toolkit/exploits/cryptominer/miner_config.json}"
 
-NAMESPACE="unguard-asai"
+NAMESPACE="unguard"
 POD_SELECTOR="app.kubernetes.io/name=frontend,app.kubernetes.io/part-of=unguard"
 PROFILE="aggressive"
 DURATION=""
@@ -30,7 +30,7 @@ Usage: $0 [options]
   -h, --help              Show this help
 
 Examples:
-  $0 --namespace unguard-asai --profile aggressive --duration 10
+  $0 --namespace unguard --profile aggressive --duration 10
   $0 --profile stealthy -- --no-stratum --cpu 10
 EOF
 }

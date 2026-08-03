@@ -60,6 +60,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/vendor ./vendor
+COPY --from=builder --chown=nextjs:nodejs /app/simulated-packages ./simulated-packages
 COPY --from=builder --chown=nextjs:nodejs /app/simulated_malware_iocs ./simulated_malware_iocs
 COPY --from=builder --chown=nextjs:nodejs /app/tracing.js ./tracing.js
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules

