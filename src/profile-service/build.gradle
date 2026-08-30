@@ -8,6 +8,9 @@ group = 'org.dynatrace'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = "11"
 
+// CVE-2022-25857: upgrade snakeyaml to 1.33 to fix Uncontrolled Resource Consumption (DoS)
+ext['snakeyaml.version'] = '1.33'
+
 repositories {
     mavenCentral()
 }
