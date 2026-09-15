@@ -204,7 +204,10 @@ jobs:
             EXISTING_PW=$(kubectl get secret unguard-mariadb -n "$K8S_NAMESPACE" \
               -o jsonpath="{.data.mariadb-root-password}" | base64 -d || true)
             if [ -n "$EXISTING_PW" ]; then
-              # Provide both root and user password so bitnami does not error looking for mariadb-password.
+              # Ensure mariadb-password key exists in the secret to satisfy Bitnami chart lookup
+              B64_PW=$(echo -n "$EXISTING_PW" | base64)
+              kubectl patch secret unguard-mariadb -n "$K8S_NAMESPACE" \
+                -p "{\"data\":{\"mariadb-password\":\"$B64_PW\"}}" 2>/dev/null || true
               helm_args+=(
                 --set-string "auth.rootPassword=$EXISTING_PW"
                 --set-string "auth.password=$EXISTING_PW"
