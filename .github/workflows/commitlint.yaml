@@ -5,13 +5,18 @@ jobs:
   commitlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v2
-        with:
-          node-version: '18'
-      - run: npm install
-      - uses: wagoid/commitlint-github-action@v5
-        env:
-          NODE_PATH: ${{ github.workspace }}/node_modules
+
+      # v5 bundled commitlint 17, whose CommonJS resolve-extends cannot
+      # require() @commitlint/config-conventional -- that package has been
+      # ESM-only since 19.0.0. Every run failed at config load with
+      # ERR_REQUIRE_ESM before a single commit message was read. v6 bundles
+      # commitlint 19, which loads ESM configs.
+      #
+      # It also bundles config-conventional, so the repo's node_modules are no
+      # longer needed here: no setup-node, no npm install, no NODE_PATH.
+      # commitlint.config.js is still read from the checkout, so the repo's
+      # own rule overrides continue to apply.
+      - uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
