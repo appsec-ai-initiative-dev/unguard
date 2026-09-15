@@ -51,6 +51,11 @@ on:
         required: false
         type: boolean
         default: false
+      redeploy_mariadb:
+        description: 'Force a MariaDB reinstall. Recreates the StatefulSet, which drops the demo database (persistence is disabled).'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
@@ -168,8 +173,22 @@ jobs:
           echo "ref=oci://ghcr.io/${NS}/unguard" >> "$GITHUB_OUTPUT"
 
       - name: Install MariaDB (prerequisite)
+        env:
+          REDEPLOY_MARIADB: ${{ inputs.redeploy_mariadb }}
         run: |
           set -euo pipefail
+          # Skip reinstall when MariaDB is already running and serving.
+          READY=$(kubectl get statefulset unguard-mariadb -n "$K8S_NAMESPACE" \
+            -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
+          case "$READY" in ''|*[!0-9]*) READY=0 ;; esac
+
+          if [ "$REDEPLOY_MARIADB" != "true" ] && [ "$READY" -ge 1 ]; then
+            echo "MariaDB is already running (readyReplicas=$READY); skipping install."
+            echo "Pass redeploy_mariadb=true to force a reinstall."
+            exit 0
+          fi
+
+          echo "Installing MariaDB (redeploy_mariadb=$REDEPLOY_MARIADB, readyReplicas=$READY)."
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
           # Reuse the existing root password so the app's stored credentials stay valid.
@@ -183,10 +202,13 @@ jobs:
           )
           if kubectl get secret unguard-mariadb -n "$K8S_NAMESPACE" &>/dev/null; then
             EXISTING_PW=$(kubectl get secret unguard-mariadb -n "$K8S_NAMESPACE" \
-              -o jsonpath="{.data.mariadb-root-password}" | base64 -d)
+              -o jsonpath="{.data.mariadb-root-password}" | base64 -d || true)
             if [ -n "$EXISTING_PW" ]; then
-              # --set-string, so a numeric-looking password is not coerced to a number.
-              helm_args+=(--set-string "auth.rootPassword=$EXISTING_PW")
+              # Provide both root and user password so bitnami does not error looking for mariadb-password.
+              helm_args+=(
+                --set-string "auth.rootPassword=$EXISTING_PW"
+                --set-string "auth.password=$EXISTING_PW"
+              )
             fi
           fi
           # Persistence is off, so the DB is ephemeral anyway; dropping the StatefulSet
