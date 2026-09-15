@@ -111,19 +111,30 @@ Resources:
                   - eks:DescribeCluster
                   - eks:ListAccessEntries
                 Resource: !Sub arn:${AWS::Partition}:eks:*:${AWS::AccountId}:cluster/${ClusterNamePattern}
-              # The workflow registers its own principal as a cluster admin access entry;
-              # everything it then does via kubectl/helm is authorized by Kubernetes, not IAM.
+              # The workflow registers its own principal as a namespace admin access entry;
+              # it is strictly constrained by IAM to only associate AmazonEKSAdminPolicy
+              # with namespace scope, preventing escalation to cluster-admin.
               - Sid: ManageOwnAccessEntry
                 Effect: Allow
                 Action:
                   - eks:CreateAccessEntry
                   - eks:DescribeAccessEntry
                   - eks:UpdateAccessEntry
-                  - eks:AssociateAccessPolicy
                   - eks:ListAssociatedAccessPolicies
                 Resource:
                   - !Sub arn:${AWS::Partition}:eks:*:${AWS::AccountId}:cluster/${ClusterNamePattern}
                   - !Sub arn:${AWS::Partition}:eks:*:${AWS::AccountId}:access-entry/${ClusterNamePattern}/*
+              - Sid: AssociateNamespaceAdminOnly
+                Effect: Allow
+                Action:
+                  - eks:AssociateAccessPolicy
+                Resource:
+                  - !Sub arn:${AWS::Partition}:eks:*:${AWS::AccountId}:cluster/${ClusterNamePattern}
+                  - !Sub arn:${AWS::Partition}:eks:*:${AWS::AccountId}:access-entry/${ClusterNamePattern}/*
+                Condition:
+                  StringEquals:
+                    eks:policyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminPolicy
+                    eks:accessScope: namespace
       Tags:
         - { Key: dt_owner_email, Value: !Ref OwnerEmail }
         - { Key: dt_owner_team, Value: !Ref OwnerTeam }

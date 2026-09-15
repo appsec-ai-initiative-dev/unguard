@@ -40,8 +40,9 @@ Unguard is a polyglot microservice application consisting of ~15 services, an ep
   * Automatically provisions an AWS Network Load Balancer (NLB).
 
 ### EKS Access & IAM
-* The deployment identity (GitHub Actions role or engineer) must have an **EKS Access Entry** configured on the cluster:
-  * Scope: `AmazonEKSClusterAdminPolicy` or `AmazonEKSEditPolicy` scoped to the deployment namespace (default `unguard`).
+* The deployment identity (GitHub Actions role or engineer) only requires permissions to manage resources inside the deployment namespace:
+  * Scope: **`AmazonEKSAdminPolicy`** scoped strictly to the target namespace (`type=namespace,namespaces=<namespace>`).
+  * **No `ClusterAdmin` permissions**: The workflow does not require cluster-wide administrative privileges and cannot access `kube-system` or other namespaces.
   * Authentication mode on the cluster must be `API` or `API_AND_CONFIG_MAP`.
 
 ### Observability (Dynatrace OneAgent / DynaKube)
@@ -84,10 +85,9 @@ In your GitHub repository settings, create an Environment (e.g. `appsec-ai-test`
 | **Secret** | `AWS_DEPLOY_ROLE_ARN` | The `RoleArn` output from the CloudFormation stack |
 | **Variable** | `EKS_CLUSTER_NAME` | Name of the target EKS cluster (e.g. `appsec-ai-test`) |
 | **Variable** | `AWS_REGION` | AWS region of the cluster (e.g. `us-east-1`) |
-| **Variable** | `LB_CONTROLLER_ROLE_NAME` | *(Optional)* Custom IRSA role name if using LoadBalancer |
-| **Variable** | `LB_SCHEME` | *(Optional)* Set to `internal` or `internet-facing` |
+| **Variable** | `LB_SCHEME` | *(Optional)* Set to `internal` or `internet-facing` (default `internet-facing`) |
 
-> **Security Note:** Add **Required Reviewers** to any non-sandbox environment. Since the workflow grants itself permissions to deploy workloads into the cluster, environment gates prevent unauthorized branch runs from deploying.
+> **Security Note:** Add **Required Reviewers** to any non-sandbox environment. The role is constrained by IAM to only manage workloads in the target namespace and cannot escalate to cluster-admin.
 
 ### Step 3: Trigger Deployment
 Go to GitHub **Actions** -> **Deploy to EKS** -> **Run workflow**:

@@ -75,8 +75,6 @@ jobs:
       IMAGE_TAG: ${{ inputs.image_tag }}
       ENABLE_APPSEC_DEMOS: ${{ inputs.enable_appsec_demos }}
       ENABLE_AI_SERVICES: ${{ inputs.enable_ai_services }}
-      # IRSA role for the AWS Load Balancer Controller; name can differ per account.
-      LB_CONTROLLER_ROLE_NAME: ${{ vars.LB_CONTROLLER_ROLE_NAME || 'AmazonEKSLoadBalancerControllerRole' }}
     steps:
       - name: Validate inputs
         run: |
@@ -108,21 +106,12 @@ jobs:
         run: |
           set -euo pipefail
           STS_ARN=$(aws sts get-caller-identity --query Arn --output text)
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           # Convert STS assumed-role ARN -> IAM role ARN (what EKS access entries expect)
           ROLE_ARN=$(echo "$STS_ARN" | sed 's|:sts:|:iam:|; s|:assumed-role/|:role/|; s|/[^/]*$||')
-          VPC_ID=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$AWS_REGION" \
-            --query 'cluster.resourcesVpcConfig.vpcId' --output text)
-          if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
-            echo "::error::Could not resolve the VPC of cluster '$CLUSTER_NAME' in '$AWS_REGION'."
-            exit 1
-          fi
-          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
           echo "role_arn=$ROLE_ARN" >> "$GITHUB_OUTPUT"
-          echo "vpc_id=$VPC_ID" >> "$GITHUB_OUTPUT"
-          echo "Account $ACCOUNT_ID, role $ROLE_ARN, vpc $VPC_ID"
+          echo "Role ARN: $ROLE_ARN"
 
-      - name: Register this role as an EKS access entry
+      - name: Register this role as a namespace admin access entry
         env:
           ROLE_ARN: ${{ steps.aws.outputs.role_arn }}
         run: |
@@ -142,10 +131,11 @@ jobs:
           }
           run_idempotent "Access entry" aws eks create-access-entry \
             --cluster-name "$CLUSTER_NAME" --principal-arn "$ROLE_ARN" --region "$AWS_REGION"
+          # Least privilege: grant admin only within the deployment namespace, never cluster-admin.
           run_idempotent "Access policy" aws eks associate-access-policy \
             --cluster-name "$CLUSTER_NAME" --principal-arn "$ROLE_ARN" \
-            --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
-            --access-scope type=cluster --region "$AWS_REGION"
+            --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminPolicy \
+            --access-scope type=namespace,namespaces="$K8S_NAMESPACE" --region "$AWS_REGION"
 
       - name: Update kubeconfig
         run: |
@@ -176,32 +166,6 @@ jobs:
           NS="${GHCR_NAMESPACE:-$GITHUB_REPOSITORY}"
           NS=$(echo "$NS" | tr '[:upper:]' '[:lower:]')
           echo "ref=oci://ghcr.io/${NS}/unguard" >> "$GITHUB_OUTPUT"
-
-      - name: Install AWS Load Balancer Controller
-        if: ${{ inputs.service_type == 'LoadBalancer' }}
-        env:
-          ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
-          VPC_ID: ${{ steps.aws.outputs.vpc_id }}
-        run: |
-          set -euo pipefail
-          helm repo add eks https://aws.github.io/eks-charts
-          helm repo update
-          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
-            --namespace kube-system \
-            --set "clusterName=$CLUSTER_NAME" \
-            --set serviceAccount.create=true \
-            --set serviceAccount.name=aws-load-balancer-controller \
-            --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::${ACCOUNT_ID}:role/${LB_CONTROLLER_ROLE_NAME}" \
-            --set replicaCount=1 \
-            --set "vpcId=$VPC_ID" \
-            --wait --timeout 5m || {
-              echo "=== LB Controller pod status ==="
-              kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller -o wide
-              echo "=== LB Controller logs ==="
-              kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller --tail=50 --previous 2>/dev/null || \
-              kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller --tail=50 2>/dev/null || true
-              exit 1
-            }
 
       - name: Install MariaDB (prerequisite)
         run: |
