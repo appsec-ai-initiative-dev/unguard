@@ -147,15 +147,25 @@ jobs:
           # EXISTS and seed idempotently, like-service runs migrate:fresh on
           # every pod start, and status-service creates nothing. The chart's
           # wait-for-mariadb init container only probes port 3306.
-          if [ "$REDEPLOY_MARIADB" != "true" ] \
-             && kubectl rollout status statefulset/unguard-mariadb \
-                  -n "$K8S_NAMESPACE" --timeout=10s >/dev/null 2>&1; then
-            echo "MariaDB is already running and ready; skipping install."
+          # Probe with a single GET rather than `kubectl rollout status`. That
+          # command opens a watch and honours --timeout, so runner latency or a
+          # momentary re-rollout makes it exit non-zero even while MariaDB is
+          # serving -- which is how the first run with this guard (34991313391)
+          # reinstalled a StatefulSet that had been ready for 58 minutes.
+          READY=$(kubectl get statefulset unguard-mariadb -n "$K8S_NAMESPACE" \
+            -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
+          # Absent statefulset yields "", and any non-numeric reply means unknown.
+          case "$READY" in ''|*[!0-9]*) READY=0 ;; esac
+
+          if [ "$REDEPLOY_MARIADB" != "true" ] && [ "$READY" -ge 1 ]; then
+            echo "MariaDB is already running (readyReplicas=$READY); skipping install."
             echo "Pass redeploy_mariadb=true to force a reinstall."
             exit 0
           fi
 
-          echo "MariaDB not ready (or reinstall forced); installing."
+          # Always state the inputs to the decision. The previous guard sent its
+          # check to /dev/null, so a wrong skip/install left no evidence why.
+          echo "Installing MariaDB (redeploy_mariadb=$REDEPLOY_MARIADB, readyReplicas=$READY)."
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
 
