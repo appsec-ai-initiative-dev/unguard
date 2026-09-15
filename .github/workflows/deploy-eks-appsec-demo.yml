@@ -28,6 +28,11 @@ on:
           - fixed
           - vulnerable
         default: fixed
+      redeploy_mariadb:
+        description: 'Force a MariaDB reinstall. Recreates the StatefulSet, which drops the demo database (persistence is disabled).'
+        required: false
+        type: boolean
+        default: false
       role_arn:
         description: 'IAM role assumed via OIDC. Not a secret -- an OIDC role is secured by its trust policy, which pins it to this repo.'
         required: false
@@ -120,7 +125,29 @@ jobs:
           echo "namespace=$NS" >> "$GITHUB_OUTPUT"
 
       - name: Install MariaDB (prerequisite)
+        env:
+          REDEPLOY_MARIADB: ${{ inputs.redeploy_mariadb }}
         run: |
+          # MariaDB is a one-time prerequisite installed outside the chart, not
+          # part of the app deploy. Reinstalling it on every run cost 58-320s of
+          # a ~130s job, and timed the whole deploy out in run 34979231548. The
+          # StatefulSet delete below also drops the demo database, since
+          # persistence is disabled. Skip it when MariaDB is already serving.
+          #
+          # Safe to skip: nothing needs a fresh database. user-auth-service and
+          # membership-service create their schema with CREATE TABLE IF NOT
+          # EXISTS and seed idempotently, like-service runs migrate:fresh on
+          # every pod start, and status-service creates nothing. The chart's
+          # wait-for-mariadb init container only probes port 3306.
+          if [ "$REDEPLOY_MARIADB" != "true" ] \
+             && kubectl rollout status statefulset/unguard-mariadb \
+                  -n "$K8S_NAMESPACE" --timeout=10s >/dev/null 2>&1; then
+            echo "MariaDB is already running and ready; skipping install."
+            echo "Pass redeploy_mariadb=true to force a reinstall."
+            exit 0
+          fi
+
+          echo "MariaDB not ready (or reinstall forced); installing."
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
           # Reuse existing password if secret exists
