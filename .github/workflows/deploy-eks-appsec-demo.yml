@@ -20,6 +20,14 @@ on:
         description: 'Helm chart version to deploy (e.g. 0.23.0-cc934f4)'
         required: true
         default: '0.23.0-cc934f4'
+      variant:
+        description: 'Which build to deploy: the chart as published, or with the PR #755 jackson-databind fix'
+        required: false
+        type: choice
+        options:
+          - fixed
+          - vulnerable
+        default: fixed
       role_arn:
         description: 'IAM role assumed via OIDC. Not a secret -- an OIDC role is secured by its trust policy, which pins it to this repo.'
         required: false
@@ -34,6 +42,11 @@ env:
   CLUSTER_NAME: perform26
   AWS_REGION: us-east-1
   K8S_NAMESPACE: appsec-demo
+  # Images built from PR #755, which pins jackson-databind to 2.18.8 in the
+  # only two services that carry the vulnerability. Cluster nodes pull these
+  # with their own instance profile -- the deploy role needs no ECR access.
+  ECR_REGISTRY: 124381674733.dkr.ecr.us-east-1.amazonaws.com
+  FIX_TAG: pr-755
 
 jobs:
   deploy:
@@ -129,15 +142,44 @@ jobs:
         env:
           CHART_NAMESPACE: ${{ steps.chart.outputs.namespace }}
           CHART_VERSION: ${{ inputs.chart_version }}
+          VARIANT: ${{ inputs.variant }}
         run: |
+          # "vulnerable" deploys the chart exactly as published. "fixed" swaps
+          # only the two services PR #755 patched; every other service is byte
+          # identical between the variants.
+          #
+          # These overrides are intentionally NOT combined with --reuse-values:
+          # restating the full desired state each run is what lets a deploy
+          # switch back from fixed to vulnerable by simply omitting them.
+          OVERRIDES=()
+          if [ "$VARIANT" = "fixed" ]; then
+            OVERRIDES=(
+              --set "profileService.deployment.container.image.repository=${ECR_REGISTRY}/unguard-profile-service"
+              --set "profileService.deployment.container.image.tag=${FIX_TAG}"
+              --set "proxyService.deployment.container.image.repository=${ECR_REGISTRY}/unguard-proxy-service"
+              --set "proxyService.deployment.container.image.tag=${FIX_TAG}"
+            )
+          fi
+
+          echo "Deploying variant: ${VARIANT}"
           helm upgrade --install unguard \
             "oci://ghcr.io/${CHART_NAMESPACE}/unguard" \
             --version "$CHART_VERSION" \
             --namespace "$K8S_NAMESPACE" \
             --set localDev.enabled=false \
             --set envoyProxy.service.type=LoadBalancer \
+            "${OVERRIDES[@]}" \
             --force-conflicts \
             --wait --timeout 10m
+
+      - name: Report deployed images
+        env:
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          echo "Requested variant: ${VARIANT}"
+          kubectl get deploy -n "$K8S_NAMESPACE" \
+            -o custom-columns='WORKLOAD:.metadata.name,IMAGE:.spec.template.spec.containers[0].image' \
+            | grep -E 'WORKLOAD|profile-service|proxy-service'
 
       - name: Annotate service for NLB
         run: |
