@@ -75,13 +75,26 @@ jobs:
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
 
       - name: Log in to GHCR
+        # The unguard chart package is public, so the deploy below succeeds
+        # anonymously. A login is only needed if that package is ever made
+        # private, so a failure here must not fail the run -- otherwise an
+        # expired GHCR_PAT blocks a deploy that never required it.
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
         run: |
           TOKEN="${GHCR_PAT:-$GITHUB_TOKEN}"
-          echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+          if [ -z "$TOKEN" ]; then
+            echo "No GHCR credential available; continuing anonymously."
+            exit 0
+          fi
+          if echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin; then
+            echo "Authenticated to ghcr.io as $ACTOR"
+          else
+            echo "::warning::GHCR login failed; continuing anonymously. Rotate GHCR_PAT if the chart package is private."
+            helm registry logout ghcr.io 2>/dev/null || true
+          fi
 
       - name: Resolve chart namespace
         id: chart
