@@ -254,6 +254,14 @@ jobs:
       - name: Print app URL
         run: |
           set -euo pipefail
+          # envoy-proxy is exposed on 8080, not 80, so the bare hostname is not a
+          # working URL -- the NLB has listeners on 8080 and 8081 only. Read the
+          # port from the service rather than hardcoding it, so a chart change
+          # cannot silently make this wrong again.
+          PORT=$(kubectl get svc unguard-envoy-proxy -n "$K8S_NAMESPACE" \
+            -o jsonpath='{.spec.ports[?(@.name=="http")].port}' 2>/dev/null || true)
+          PORT="${PORT:-8080}"
+
           echo "Waiting for LoadBalancer hostname..."
           for i in $(seq 1 18); do
             # `|| true`: a transient kubectl failure would otherwise abort the
@@ -261,9 +269,12 @@ jobs:
             HOSTNAME=$(kubectl get svc unguard-envoy-proxy -n "$K8S_NAMESPACE" \
               -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
             if [ -n "$HOSTNAME" ]; then
-              echo "App URL: http://$HOSTNAME"
+              # Plain HTTP is correct here: the NLB terminates no TLS and no cert
+              # can be issued for an *.elb.amazonaws.com name.
+              URL="http://${HOSTNAME}:${PORT}"
+              echo "App URL: $URL"
               # Default guards against `set -u` when run outside Actions.
-              echo "### App URL: http://$HOSTNAME" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              echo "### App URL: $URL" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
               exit 0
             fi
             echo "  waiting... ($i/18)"
