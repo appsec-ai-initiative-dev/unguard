@@ -236,7 +236,6 @@ jobs:
             --create-namespace
             --set localDev.enabled=false
             --set "envoyProxy.service.type=$SERVICE_TYPE"
-            --force-conflicts
             --wait --timeout 10m
           )
           if [ "$CHART_SOURCE" = "local" ]; then
