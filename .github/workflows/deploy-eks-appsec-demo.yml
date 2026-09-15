@@ -56,6 +56,9 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Without this the default is six hours. The MariaDB step has already hung
+    # to its own timeout once (run 34979231548), so cap the job too.
+    timeout-minutes: 30
     steps:
       # workflow_dispatch inputs are controlled by whoever triggers the run, so
       # they are untrusted. Every use below passes them through `env:` rather
@@ -67,6 +70,7 @@ jobs:
         env:
           CHART_VERSION: ${{ inputs.chart_version }}
         run: |
+          set -euo pipefail
           if ! [[ "$CHART_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
             echo "::error::chart_version must match ^[A-Za-z0-9][A-Za-z0-9._+-]*$" >&2
             exit 1
@@ -85,6 +89,7 @@ jobs:
 
       - name: Update kubeconfig
         run: |
+          set -euo pipefail
           aws eks update-kubeconfig \
             --name "$CLUSTER_NAME" \
             --region "$AWS_REGION"
@@ -102,6 +107,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
         run: |
+          set -euo pipefail
           TOKEN="${GHCR_PAT:-$GITHUB_TOKEN}"
           if [ -z "$TOKEN" ]; then
             echo "No GHCR credential available; continuing anonymously."
@@ -120,6 +126,7 @@ jobs:
           GHCR_NAMESPACE: ${{ secrets.GHCR_NAMESPACE }}
           REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
           NS="${GHCR_NAMESPACE:-$REPO}"
           NS=$(echo "$NS" | tr '[:upper:]' '[:lower:]')
           echo "namespace=$NS" >> "$GITHUB_OUTPUT"
@@ -128,6 +135,7 @@ jobs:
         env:
           REDEPLOY_MARIADB: ${{ inputs.redeploy_mariadb }}
         run: |
+          set -euo pipefail
           # MariaDB is a one-time prerequisite installed outside the chart, not
           # part of the app deploy. Reinstalling it on every run cost 58-320s of
           # a ~130s job, and timed the whole deploy out in run 34979231548. The
@@ -150,20 +158,27 @@ jobs:
           echo "MariaDB not ready (or reinstall forced); installing."
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
-          # Reuse existing password if secret exists
-          EXTRA_ARGS=""
+
+          helm_args=(
+            --namespace "$K8S_NAMESPACE"
+            --set primary.persistence.enabled=false
+            --wait --timeout 5m
+          )
+          # Reuse the existing root password so the app's stored credentials stay
+          # valid. An array, not an unquoted string: a password containing a space
+          # would word-split. The read is guarded so a failure here cannot abort
+          # the step under `set -e` before the emptiness check below.
           if kubectl get secret unguard-mariadb -n "$K8S_NAMESPACE" &>/dev/null; then
             EXISTING_PW=$(kubectl get secret unguard-mariadb -n "$K8S_NAMESPACE" \
-              -o jsonpath="{.data.mariadb-root-password}" | base64 -d)
-            EXTRA_ARGS="--set auth.rootPassword=${EXISTING_PW}"
+              -o jsonpath="{.data.mariadb-root-password}" | base64 -d || true)
+            if [ -n "$EXISTING_PW" ]; then
+              # --set-string, so a numeric-looking password is not coerced to a number.
+              helm_args+=(--set-string "auth.rootPassword=$EXISTING_PW")
+            fi
           fi
           # Delete the StatefulSet if it exists so Helm can recreate with updated spec
           kubectl delete statefulset unguard-mariadb -n "$K8S_NAMESPACE" --ignore-not-found
-          helm upgrade --install unguard-mariadb bitnami/mariadb \
-            --namespace "$K8S_NAMESPACE" \
-            --set primary.persistence.enabled=false \
-            --wait --timeout 5m \
-            $EXTRA_ARGS
+          helm upgrade --install unguard-mariadb bitnami/mariadb "${helm_args[@]}"
 
       - name: Deploy with Helm
         env:
@@ -171,6 +186,7 @@ jobs:
           CHART_VERSION: ${{ inputs.chart_version }}
           VARIANT: ${{ inputs.variant }}
         run: |
+          set -euo pipefail
           # "vulnerable" deploys the chart exactly as published. "fixed" swaps
           # only the two services PR #755 patched; every other service is byte
           # identical between the variants.
@@ -188,6 +204,19 @@ jobs:
             )
           fi
 
+          # Set the NLB annotations at create time so the AWS CCM never
+          # provisions a classic ELB first. These are INERT against the chart
+          # currently deployed: 0.23.0-cc934f4 has no annotations block in its
+          # envoy-proxy Service template -- support was added later, and Helm
+          # accepts unknown values silently. They take effect automatically once
+          # chart_version moves to 0.24.0+. Until then the "Annotate service for
+          # NLB" step below remains the path that actually applies them.
+          OVERRIDES+=(
+            --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-type=external"
+            --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type=instance"
+            --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-scheme=internet-facing"
+          )
+
           echo "Deploying variant: ${VARIANT}"
           helm upgrade --install unguard \
             "oci://ghcr.io/${CHART_NAMESPACE}/unguard" \
@@ -203,13 +232,20 @@ jobs:
         env:
           VARIANT: ${{ inputs.variant }}
         run: |
+          set -euo pipefail
           echo "Requested variant: ${VARIANT}"
+          # `|| true`: grep exits 1 when nothing matches, which would abort this
+          # reporting step under `set -e` and mask whatever the deploy actually did.
           kubectl get deploy -n "$K8S_NAMESPACE" \
             -o custom-columns='WORKLOAD:.metadata.name,IMAGE:.spec.template.spec.containers[0].image' \
-            | grep -E 'WORKLOAD|profile-service|proxy-service'
+            | grep -E 'WORKLOAD|profile-service|proxy-service' || true
 
       - name: Annotate service for NLB
+        # Still the path that actually applies these, since the deployed chart
+        # ignores the equivalent --set flags above. Intentionally unguarded: if
+        # this fails the Service keeps the wrong LB type, which should fail loudly.
         run: |
+          set -euo pipefail
           kubectl annotate svc unguard-envoy-proxy -n "$K8S_NAMESPACE" --overwrite \
             service.beta.kubernetes.io/aws-load-balancer-type=external \
             service.beta.kubernetes.io/aws-load-balancer-nlb-target-type=instance \
@@ -217,27 +253,47 @@ jobs:
 
       - name: Print app URL
         run: |
+          set -euo pipefail
+          # envoy-proxy is exposed on 8080, not 80, so the bare hostname is not a
+          # working URL -- the NLB has listeners on 8080 and 8081 only. Read the
+          # port from the service rather than hardcoding it, so a chart change
+          # cannot silently make this wrong again.
+          PORT=$(kubectl get svc unguard-envoy-proxy -n "$K8S_NAMESPACE" \
+            -o jsonpath='{.spec.ports[?(@.name=="http")].port}' 2>/dev/null || true)
+          PORT="${PORT:-8080}"
+
           echo "Waiting for LoadBalancer hostname..."
           for i in $(seq 1 18); do
+            # `|| true`: a transient kubectl failure would otherwise abort the
+            # whole retry loop on its first iteration under `set -e`.
             HOSTNAME=$(kubectl get svc unguard-envoy-proxy -n "$K8S_NAMESPACE" \
-              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
             if [ -n "$HOSTNAME" ]; then
-              echo "App URL: http://$HOSTNAME"
+              # Plain HTTP is correct here: the NLB terminates no TLS and no cert
+              # can be issued for an *.elb.amazonaws.com name.
+              URL="http://${HOSTNAME}:${PORT}"
+              echo "App URL: $URL"
+              # Default guards against `set -u` when run outside Actions.
+              echo "### App URL: $URL" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
               exit 0
             fi
             echo "  waiting... ($i/18)"
             sleep 10
           done
-          echo "LoadBalancer hostname not yet assigned (ELB may still be provisioning)"
+          # Previously this printed a notice and passed, so a deploy with no
+          # reachable URL still reported success.
+          echo "::error::LoadBalancer hostname was not assigned within 3 minutes."
+          kubectl describe svc unguard-envoy-proxy -n "$K8S_NAMESPACE" || true
+          exit 1
 
       - name: Show pod status
         if: always()
+        # Diagnostics only. Every command is `|| true`: this runs on failure, so
+        # it must never abort partway and hide the output that explains why.
         run: |
           echo "=== Pods ==="
-          kubectl get pods -n "$K8S_NAMESPACE" -o wide
+          kubectl get pods -n "$K8S_NAMESPACE" -o wide || true
           echo ""
-          echo "=== Not-ready pods (excluding cronjobs) ==="
-          kubectl get pods -n "$K8S_NAMESPACE" -o json | \
-            jq -r '.items[] | select(.status.phase != "Running" and (.metadata.ownerReferences[]?.kind != "Job")) | .metadata.name' 2>/dev/null | \
-            xargs -r -I{} kubectl describe pod {} -n "$K8S_NAMESPACE" | \
-            grep -A 10 "Events:\|Reason:\|Message:" || true
+          echo "=== Recent namespace events ==="
+          kubectl get events -n "$K8S_NAMESPACE" --sort-by=.lastTimestamp \
+            --field-selector type!=Normal | tail -30 || true
