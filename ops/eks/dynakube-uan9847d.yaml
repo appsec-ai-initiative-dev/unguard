@@ -1,0 +1,59 @@
+# DynaKube for appsec-ai-test -> uan9847d tenant (WORKING config, updated 2026-09-04).
+#
+# uan9847d is a DEV tenant: its *native dev* OneAgent/ActiveGate build (matching the tenant's
+# own 1.348 version) lives only in the private ruxit-dev ECR (478983378254), which this cluster's
+# account can't pull (needs Heimdall/IRSA). We SIDESTEP that by pulling *public* GA images from
+# public.ecr.aws/dynatrace instead - an older GA agent connecting to a newer dev tenant is fine.
+#
+# Two things are configured here:
+#   1. oneAgent.applicationMonitoring  -> injects the GA code-modules image into app pods via CSI.
+#      This gives application observability + RAP/attack detection (the DETECTION_FINDING stream).
+#      applicationMonitoring is app-only: NO host agent, NO in-cluster ActiveGate by itself, so on
+#      its own it does NOT register the cluster as a monitored Kubernetes entity.
+#   2. activeGate (kubernetes-monitoring) -> deploys an in-cluster ActiveGate that polls the K8s
+#      API. With automatic-kubernetes-api-monitoring (operator default when this capability is set),
+#      the EKS cluster shows up in the Kubernetes app: nodes, workloads, events.
+#
+# Public image tag notes (public.ecr.aws/dynatrace):
+#   - codemodules uses SHORT tags: 1.343 exists (200); 1.345/1.347/1.348 do not yet (404).
+#   - activegate has NO short tags (1.343 -> 404) but DOES publish FULL tags; newest non-fips as of
+#     2026-09-04 is 1.343.52.20260727-092518 (a -fips variant 1.345.56... also exists).
+#   Discover newer valid public tags if these age out:
+#     TOKEN=$(curl -s "https://public.ecr.aws/token/?service=public.ecr.aws&scope=repository:dynatrace/dynatrace-codemodules:pull" | jq -r .token)
+#     curl -sI -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.oci.image.index.v1+json" \
+#       https://public.ecr.aws/v2/dynatrace/dynatrace-codemodules/manifests/1.345         # 200 = exists
+#     TOKEN=$(curl -s "https://public.ecr.aws/token/?service=public.ecr.aws&scope=repository:dynatrace/dynatrace-activegate:pull" | jq -r .token)
+#     curl -s -H "Authorization: Bearer $TOKEN" https://public.ecr.aws/v2/dynatrace/dynatrace-activegate/tags/list  # pick newest full tag
+#
+# Tokens: reuse the "appsec-ai-test" secret created by the tenant's Connect-cluster download
+# (platform tokens dt0s16). The Connect-cluster / Kubernetes-monitoring flow provisions the scopes
+# the ActiveGate needs (activeGateTokenManagement, entities read, settings read/write). No image
+# pull secret needed (public images).
+#
+# After apply: kubectl rollout restart deployment -n unguard  (so app pods get the code module),
+# then enable Application Protection / attack detection for host group "appsec-ai-test" in the tenant.
+apiVersion: dynatrace.com/v1beta6
+kind: DynaKube
+metadata:
+  name: appsec-ai-test-agents
+  namespace: dynatrace
+  labels:
+    dynatrace.com/created-by: "dynatrace.kubernetes"
+spec:
+  apiUrl: https://uan9847d.dev.dynatracelabs.com/api
+  tokens: appsec-ai-test
+  oneAgent:
+    hostGroup: appsec-ai-test
+    applicationMonitoring:
+      codeModulesImage: public.ecr.aws/dynatrace/dynatrace-codemodules:1.343
+  activeGate:
+    capabilities:
+      - kubernetes-monitoring
+    image: public.ecr.aws/dynatrace/dynatrace-activegate:1.343.52.20260727-092518
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1.5Gi

@@ -109,4 +109,4 @@ spec:
             - name: SAFE_TOKEN_PIPELINE
               value: {{ quote .Values.frontend.deployment.container.env.SAFE_TOKEN_PIPELINE }}
             - name: NODE_OPTIONS
-              value: "--require /opt/dynatrace/oneagent-paas/agent/bin/current/any/nodejs/nodejsagent.js --require /app/tracing.js"
+              value: "--require /opt/dynatrace/oneagent-paas/agent/bin/current/any/nodejs/nodejsagent.js{{ if .Values.tracing.enabled }} --require /app/tracing.js{{ end }}"

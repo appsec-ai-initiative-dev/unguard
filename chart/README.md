@@ -104,6 +104,20 @@ helm install unguard  oci://ghcr.io/dynatrace-oss/unguard/chart/unguard --versio
 | `buildRunner.trigger.schedule`   | CronJob schedule for periodic build-runner exfil triggers                 | `0 */6 * * *`     |
 | `shaiHuludTrigger.enabled`       | Deploys the CronJob that triggers the frontend shai-hulud exfil           | `false`           |
 | `shaiHuludTrigger.schedule`      | CronJob schedule for periodic frontend exfil triggers                     | `0 */6 * * *`     |
+| `attackSimulator.enabled`        | Deploys the CronJob that periodically attacks vulnerable endpoints        | `false`           |
+| `attackSimulator.schedule`       | CronJob schedule for the periodic attack burst                            | `0 */2 * * *`     |
+| `detectionStream.enabled`        | Deploys the continuous detection-stream generator (Deployment)            | `false`           |
+| `detectionStream.minSleep`       | Min seconds of jitter between attack passes                               | `45`              |
+| `detectionStream.maxSleep`       | Max seconds of jitter between attack passes                               | `150`             |
+| `detectionStream.attackChancePercent` | Percent chance each individual attack fires per pass                 | `70`              |
+| `detectionStream.attackerIps`    | Space-separated pool of source IPs spoofed via X-Forwarded-For            | geo-varied pool   |
+| `detectionStream.misdirectChancePercent` | Percent chance of a "misdirected" attack (de-prioritize candidate) | `25`            |
+| `incidentInjector.enabled`       | Deploys the incident injector (Davis problems ↔ detections)              | `false`           |
+| `incidentInjector.rate`          | Concurrent requests per second during a burst                            | `8`               |
+| `incidentInjector.durationSeconds` | Length of each malicious / benign burst                                | `120`             |
+| `incidentInjector.gapSeconds`    | Quiet gap between bursts                                                  | `300`             |
+| `incidentInjector.maliciousSourceIp` | Fixed source IP for the malicious burst (reads as one campaign)      | `185.220.101.47`  |
+| `kspmMisconfig.enabled`          | Deploys inert workloads with insecure config for KSPM findings           | `false`           |
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
@@ -186,6 +200,74 @@ helm install unguard ./chart \
 ```
 
 The CronJobs trigger the exfiltration every 6 hours by default. Adjust the schedule via `buildRunner.trigger.schedule` and `shaiHuludTrigger.schedule`.
+
+## Generating a Continuous Stream of Security Detections
+
+Unguard can drive a steady stream of runtime security detections (SQLi, command
+injection, SSRF, JNDI/Log4Shell) against its own intentionally vulnerable endpoints.
+OneAgent Runtime Application Protection turns each attack into a `DETECTION_FINDING`
+(plus a correlated Davis problem), which is useful for demos and for keeping a
+security tenant populated with live data.
+
+Two variants are shipped:
+
+| Component | Kind | Cadence | Use when |
+|-----------|------|---------|----------|
+| `attackSimulator`  | CronJob    | Burst every N hours (default every 2h) | You want an occasional spike of findings. |
+| `detectionStream`  | Deployment | Continuous, jittered loop               | You want a *stream* of findings while unguard is up. |
+
+Enable the continuous stream:
+
+```sh
+helm upgrade --install unguard oci://ghcr.io/dynatrace-oss/unguard/chart/unguard \
+  --set detectionStream.enabled=true
+```
+
+`detectionStream` is intentionally a **Deployment, not a CronJob**. Clusters whose
+nodegroup is scaled to zero at night/weekends can leave a CronJob accumulating a
+backlog of `Pending` jobs that all fire at once when nodes return. A Deployment
+instead leaves a single unschedulable pod while the cluster is shrunk and resumes on
+its own when it scales back up - no backlog, no thundering herd. Tune the volume and
+shape of the stream with `detectionStream.minSleep`, `detectionStream.maxSleep`,
+`detectionStream.attackChancePercent` and `detectionStream.attackerUsers`.
+
+### Making the stream richer for triage and correlation
+
+The base stream is enough for "there are detections", but three add-ons make the data
+good enough to *drive AI SecOps use cases* (queue-level detection triage, problem ↔
+security association, KSPM misconfiguration triage):
+
+- **Attacker-IP diversity + more services.** The stream spoofs `X-Forwarded-For` /
+  `X-Real-IP` from `detectionStream.attackerIps` so findings spread across `actor.ips`
+  (each persona recurs from its own IP, with occasional distributed spread), and it
+  now exercises the .NET (`membership`), Go (`users`), PHP (`like`) and Node
+  (`auth/login`) injection paths as well as the Java ones - so detections land on
+  several process groups and severities. `detectionStream.misdirectChancePercent`
+  fires the occasional attack at a service that is *not* vulnerable to it, giving triage
+  a clean de-prioritize / false-positive-looking candidate to discriminate.
+
+- **`incidentInjector` - Davis problems that overlap detections.** The association use
+  case joins a Davis problem's affected entities × detections in the problem window. A
+  steady stream rarely raises *problems*, so this workload manufactures both halves: a
+  **malicious** burst of broken-but-malicious SQLi at one service (RAP attack + 5xx →
+  a failure-rate problem on the same entity/window → association *SUSPICIOUS*), and a
+  **benign** burst of legitimate timeline reads at a different service (a load problem
+  with no detection → association *BENIGN*). Whether Davis opens a problem depends on
+  the tenant's anomaly detection; on a quiet tenant, raise sensitivity or set a static
+  failure-rate/response-time threshold on the target services, and tune
+  `incidentInjector.rate` / `durationSeconds`.
+
+- **`kspmMisconfig` - posture findings.** Inert workloads (they only `sleep`) carrying
+  deliberately insecure config - privileged, host namespaces, a read-only host mount,
+  added Linux capabilities, no limits - so Kubernetes Security Posture Management emits
+  compliance findings. Requires a kubernetes-monitoring ActiveGate with KSPM attached.
+
+```sh
+helm upgrade --install unguard oci://ghcr.io/dynatrace-oss/unguard/chart/unguard \
+  --set detectionStream.enabled=true \
+  --set incidentInjector.enabled=true \
+  --set kspmMisconfig.enabled=true
+```
 
 ## License
 

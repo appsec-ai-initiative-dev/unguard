@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: "2010-09-09"
+# Rationale, coverage matrix and safety rules: see README.md ("Keeping the tags on").
+# Short version: EKS nodegroup tags do NOT reach the ASG or instances, and the ASG's
+# PropagateAtLaunch does NOT reach root EBS volumes - so every scale-up mints untagged
+# volumes and a nodegroup rebuild starts with an untagged ASG. This sweep closes both.
+Description: >
+  Daily ownership-tag sweep (dt_owner_email / dt_owner_team) for account 016886142452,
+  so the FinOps "tag it or lose it" reaper can never again delete the appsec-ai-test EKS
+  cluster that generates uan9847d detection volume. Only touches resources already
+  attributable to this owner, only tags attached volumes, and never strips
+  NOT_PROPERLY_TAGGED (it logs a warning instead).
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: appsec-ai-test
+  ClusterRegion:
+    Type: String
+    Default: us-east-1
+  Regions:
+    Type: String
+    Default: us-east-1,eu-central-1
+    Description: Comma-separated regions to sweep for EC2 instances and EBS volumes.
+  OwnerEmail:
+    Type: String
+    Default: aylin.sali@dynatrace.com
+    Description: Must be an active @dynatrace.com address (FinOps requirement).
+  OwnerTeam:
+    Type: String
+    Default: team-appsec-solution
+  ScheduleExpression:
+    Type: String
+    Default: cron(0 8 * * ? *)
+    Description: >
+      UTC. Default 08:00 daily, which stays at least an hour after the 08:00
+      Europe/Berlin scale-up in both DST regimes (CEST = 06:00 UTC, CET = 07:00 UTC),
+      so the sweep always sees the freshly launched nodes and their new root volumes.
+
+Resources:
+  JanitorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: tag-janitor
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeVolumes
+                  - eks:DescribeCluster
+                  - eks:ListNodegroups
+                  - eks:DescribeNodegroup
+                  - autoscaling:DescribeAutoScalingGroups
+                Resource: "*"
+              - Effect: Allow
+                Action: ec2:CreateTags
+                Resource:
+                  - !Sub arn:aws:ec2:*:${AWS::AccountId}:instance/*
+                  - !Sub arn:aws:ec2:*:${AWS::AccountId}:volume/*
+              - Effect: Allow
+                Action: autoscaling:CreateOrUpdateTags
+                Resource: "*"
+              - Effect: Allow
+                Action: eks:TagResource
+                Resource:
+                  - !Sub arn:aws:eks:${ClusterRegion}:${AWS::AccountId}:cluster/${ClusterName}
+                  - !Sub arn:aws:eks:${ClusterRegion}:${AWS::AccountId}:nodegroup/${ClusterName}/*
+
+  JanitorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ClusterName}-tag-janitor
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt JanitorRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          CLUSTER_NAME: !Ref ClusterName
+          CLUSTER_REGION: !Ref ClusterRegion
+          REGIONS: !Ref Regions
+          OWNER_EMAIL: !Ref OwnerEmail
+          OWNER_TEAM: !Ref OwnerTeam
+      Tags:
+        - { Key: dt_owner_email, Value: !Ref OwnerEmail }
+        - { Key: dt_owner_team, Value: !Ref OwnerTeam }
+      Code:
+        ZipFile: |
+          import boto3, os
+          E = os.environ
+          OWN = {"dt_owner_email": E["OWNER_EMAIL"], "dt_owner_team": E["OWNER_TEAM"]}
+          K = set(OWN); CL = E["CLUSTER_NAME"]; CR = E["CLUSTER_REGION"]
+          REGIONS = [r.strip() for r in E["REGIONS"].split(",") if r.strip()]
+          TAGS = [{"Key": k, "Value": v} for k, v in OWN.items()]
+
+          def miss(t):
+              return not K & {x["Key"] for x in t}
+
+          def ours(t):
+              d = {x["Key"]: x["Value"] for x in t}
+              return ("kubernetes.io/cluster/" + CL) in d \
+                  or d.get("eks:cluster-name") == CL \
+                  or d.get("ACE:CREATED-BY") == OWN["dt_owner_email"] \
+                  or d.get("dt_owner_email") == OWN["dt_owner_email"]
+
+          def sweep_eks(fixed):
+              eks = boto3.client("eks", region_name=CR)
+              asg = boto3.client("autoscaling", region_name=CR)
+              c = eks.describe_cluster(name=CL)["cluster"]
+              if not K & set(c.get("tags", {})):
+                  eks.tag_resource(resourceArn=c["arn"], tags=OWN); fixed.append(c["arn"])
+              gs = []
+              for n in eks.list_nodegroups(clusterName=CL)["nodegroups"]:
+                  g = eks.describe_nodegroup(clusterName=CL, nodegroupName=n)["nodegroup"]
+                  if not K & set(g.get("tags", {})):
+                      eks.tag_resource(resourceArn=g["nodegroupArn"], tags=OWN)
+                      fixed.append(g["nodegroupArn"])
+                  gs += [a["name"] for a in g["resources"]["autoScalingGroups"]]
+              if not gs:
+                  return
+              for g in asg.describe_auto_scaling_groups(
+                      AutoScalingGroupNames=gs)["AutoScalingGroups"]:
+                  need = [k for k in OWN if not any(
+                      t["Key"] == k and t["PropagateAtLaunch"] for t in g["Tags"])]
+                  if need:
+                      asg.create_or_update_tags(Tags=[{
+                          "ResourceId": g["AutoScalingGroupName"],
+                          "ResourceType": "auto-scaling-group", "Key": k,
+                          "Value": OWN[k], "PropagateAtLaunch": True} for k in need])
+                      fixed.append(g["AutoScalingGroupName"])
+
+          def sweep_region(rg, fixed, flagged):
+              ec2 = boto3.client("ec2", region_name=rg)
+              todo = []; mine = set()
+              for p in ec2.get_paginator("describe_instances").paginate(
+                      Filters=[{"Name": "instance-state-name",
+                                "Values": ["running", "stopped", "stopping"]}]):
+                  for r in p["Reservations"]:
+                      for i in r["Instances"]:
+                          t = i.get("Tags", [])
+                          if not ours(t):
+                              continue
+                          mine.add(i["InstanceId"])
+                          if miss(t):
+                              todo.append(i["InstanceId"])
+                          if any(x["Key"] == "NOT_PROPERLY_TAGGED" for x in t):
+                              flagged.append(rg + "/" + i["InstanceId"])
+              for p in ec2.get_paginator("describe_volumes").paginate(
+                      Filters=[{"Name": "status", "Values": ["in-use"]}]):
+                  for v in p["Volumes"]:
+                      t = v.get("Tags", [])
+                      att = {a.get("InstanceId") for a in v.get("Attachments", [])}
+                      if not (ours(t) or att & mine):
+                          continue
+                      if miss(t):
+                          todo.append(v["VolumeId"])
+                      if any(x["Key"] == "NOT_PROPERLY_TAGGED" for x in t):
+                          flagged.append(rg + "/" + v["VolumeId"])
+              if todo:
+                  ec2.create_tags(Resources=todo, Tags=TAGS)
+                  fixed += [rg + "/" + i for i in todo]
+
+          def handler(event, context):
+              fixed = []; flagged = []
+              sweep_eks(fixed)
+              for rg in REGIONS:
+                  sweep_region(rg, fixed, flagged)
+              if flagged:
+                  print("WARNING still marked NOT_PROPERLY_TAGGED:", flagged)
+              print("retagged %d resource(s): %s" % (len(fixed), fixed))
+              return {"fixed": fixed, "flagged": flagged}
+
+  DailyRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${ClusterName}-tag-janitor
+      Description: Daily ownership-tag sweep so the FinOps reaper never sees an untagged resource.
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: janitor
+          Arn: !GetAtt JanitorFunction.Arn
+
+  AllowEvents:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt JanitorFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailyRule.Arn
+
+Outputs:
+  FunctionName:
+    Value: !Ref JanitorFunction
+  InvokeNow:
+    Description: Run the sweep on demand.
+    Value: !Sub aws lambda invoke --function-name ${JanitorFunction} --region ${AWS::Region} /dev/stdout

@@ -191,3 +191,9 @@ profiles:
       - op: add
         path: /deploy/helm/releases/1/setValues/maliciousLoadGenerator.enabled
         value: "true"
+
+  - name: detection-stream
+    patches:
+      - op: add
+        path: /deploy/helm/releases/1/setValues/detectionStream.enabled
+        value: "true"

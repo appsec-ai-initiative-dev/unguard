@@ -1,24 +1,56 @@
 name: Deploy to EKS
 
+# Target account/cluster comes from the selected GitHub Environment, not from the
+# workflow inputs: an IAM policy can only grant access inside its own account, so each
+# AWS account runs ops/eks/github-deploy-role.cfn.yaml once and publishes the resulting
+# role ARN as that environment's AWS_DEPLOY_ROLE_ARN secret. Protect any environment
+# outside the sandbox with required reviewers - this workflow grants itself EKS cluster
+# admin on whatever cluster it is pointed at.
 on:
   workflow_dispatch:
     inputs:
-      chart_version:
-        description: 'Helm chart version to deploy (e.g. 0.23.0-cc934f4)'
+      environment:
+        description: 'GitHub Environment holding the target AWS account credentials'
         required: true
-        default: '0.23.0-cc934f4'
+        type: environment
+      chart_source:
+        description: 'Chart source: "local" (deploy ./chart from repo) or "oci" (deploy from GHCR)'
+        required: false
+        default: 'local'
+      chart_version:
+        description: 'Helm chart version if chart_source is oci (e.g. 0.24.0)'
+        required: false
+        default: '0.24.0'
+      image_tag:
+        description: 'Override container image tag (local chart only; empty = chart defaults)'
+        required: false
+        default: ''
       cluster_name:
-        description: 'EKS cluster name'
+        description: 'EKS cluster name (empty = the environment''s EKS_CLUSTER_NAME variable)'
         required: false
-        default: 'appsec-ai-test'
+        default: ''
       aws_region:
-        description: 'AWS region'
+        description: 'AWS region (empty = the environment''s AWS_REGION variable)'
         required: false
-        default: 'us-east-1'
+        default: ''
       k8s_namespace:
         description: 'Kubernetes namespace to deploy into'
         required: false
         default: 'unguard'
+      service_type:
+        description: 'Service type for envoy-proxy (ClusterIP or LoadBalancer)'
+        required: false
+        default: 'ClusterIP'
+      enable_appsec_demos:
+        description: 'Enable continuous detectionStream, incidentInjector, and kspmMisconfig'
+        required: false
+        type: boolean
+        default: true
+      enable_ai_services:
+        description: 'Enable ollama and ragService (requires high-memory/GPU nodes)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
@@ -28,72 +60,140 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 30
+    env:
+      # Inputs win when set, otherwise fall back to the environment's variables. Every
+      # step reads these through env rather than interpolating ${{ }} into the shell,
+      # so a value like 'foo; rm -rf /' stays a string instead of becoming a command.
+      CLUSTER_NAME: ${{ inputs.cluster_name || vars.EKS_CLUSTER_NAME }}
+      AWS_REGION: ${{ inputs.aws_region || vars.AWS_REGION }}
+      K8S_NAMESPACE: ${{ inputs.k8s_namespace }}
+      SERVICE_TYPE: ${{ inputs.service_type }}
+      CHART_SOURCE: ${{ inputs.chart_source }}
+      CHART_VERSION: ${{ inputs.chart_version }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      ENABLE_APPSEC_DEMOS: ${{ inputs.enable_appsec_demos }}
+      ENABLE_AI_SERVICES: ${{ inputs.enable_ai_services }}
+      # IRSA role for the AWS Load Balancer Controller; name can differ per account.
+      LB_CONTROLLER_ROLE_NAME: ${{ vars.LB_CONTROLLER_ROLE_NAME || 'AmazonEKSLoadBalancerControllerRole' }}
     steps:
+      - name: Validate inputs
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [ -n "$CLUSTER_NAME" ] || fail "No cluster: pass cluster_name or set the EKS_CLUSTER_NAME variable on environment '${{ inputs.environment }}'."
+          [ -n "$AWS_REGION" ] || fail "No region: pass aws_region or set the AWS_REGION variable on environment '${{ inputs.environment }}'."
+          [ -n "${{ secrets.AWS_DEPLOY_ROLE_ARN }}" ] || fail "Environment '${{ inputs.environment }}' has no AWS_DEPLOY_ROLE_ARN secret. Deploy ops/eks/github-deploy-role.cfn.yaml in the target account first."
+          case "$CHART_SOURCE" in local|oci) ;; *) fail "chart_source must be 'local' or 'oci', got '$CHART_SOURCE'." ;; esac
+          case "$SERVICE_TYPE" in ClusterIP|LoadBalancer) ;; *) fail "service_type must be 'ClusterIP' or 'LoadBalancer', got '$SERVICE_TYPE'." ;; esac
+          # image_tag rewrites ./chart in place; an OCI chart has its tags already baked in.
+          if [ -n "$IMAGE_TAG" ] && [ "$CHART_SOURCE" = "oci" ]; then
+            fail "image_tag only applies to chart_source=local. For OCI, pass the matching chart_version instead."
+          fi
+          echo "Deploying to cluster '$CLUSTER_NAME' in '$AWS_REGION' (namespace '$K8S_NAMESPACE')"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-region: ${{ inputs.aws_region }}
-          role-to-assume: ${{ secrets.AWS_ECR_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           role-session-name: GitHubActionsEKSDeploy
 
-      - name: Register this role as an EKS access entry
+      - name: Resolve AWS account context
+        id: aws
         run: |
-          # Convert STS assumed-role ARN -> IAM role ARN
+          set -euo pipefail
           STS_ARN=$(aws sts get-caller-identity --query Arn --output text)
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          # Convert STS assumed-role ARN -> IAM role ARN (what EKS access entries expect)
           ROLE_ARN=$(echo "$STS_ARN" | sed 's|:sts:|:iam:|; s|:assumed-role/|:role/|; s|/[^/]*$||')
-          echo "Registering $ROLE_ARN on cluster ${{ inputs.cluster_name }}"
-          aws eks create-access-entry \
-            --cluster-name ${{ inputs.cluster_name }} \
-            --principal-arn "$ROLE_ARN" \
-            --region ${{ inputs.aws_region }} 2>/dev/null \
-            && echo "Access entry created" || echo "Access entry already exists, continuing"
-          aws eks associate-access-policy \
-            --cluster-name ${{ inputs.cluster_name }} \
-            --principal-arn "$ROLE_ARN" \
+          VPC_ID=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$AWS_REGION" \
+            --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+          if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+            echo "::error::Could not resolve the VPC of cluster '$CLUSTER_NAME' in '$AWS_REGION'."
+            exit 1
+          fi
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+          echo "role_arn=$ROLE_ARN" >> "$GITHUB_OUTPUT"
+          echo "vpc_id=$VPC_ID" >> "$GITHUB_OUTPUT"
+          echo "Account $ACCOUNT_ID, role $ROLE_ARN, vpc $VPC_ID"
+
+      - name: Register this role as an EKS access entry
+        env:
+          ROLE_ARN: ${{ steps.aws.outputs.role_arn }}
+        run: |
+          set -euo pipefail
+          # "already exists" is the expected steady state; anything else (AccessDenied,
+          # bad cluster name) must fail loudly instead of being swallowed by 2>/dev/null.
+          run_idempotent() {
+            local desc="$1"; shift
+            if "$@" >/dev/null 2>/tmp/eks-err; then
+              echo "$desc: done"
+            elif grep -qE 'ResourceInUseException|already (exists|associated)' /tmp/eks-err; then
+              echo "$desc: already present, continuing"
+            else
+              cat /tmp/eks-err >&2
+              exit 1
+            fi
+          }
+          run_idempotent "Access entry" aws eks create-access-entry \
+            --cluster-name "$CLUSTER_NAME" --principal-arn "$ROLE_ARN" --region "$AWS_REGION"
+          run_idempotent "Access policy" aws eks associate-access-policy \
+            --cluster-name "$CLUSTER_NAME" --principal-arn "$ROLE_ARN" \
             --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
-            --access-scope type=cluster \
-            --region ${{ inputs.aws_region }} 2>/dev/null \
-            && echo "Policy associated" || echo "Policy already associated, continuing"
+            --access-scope type=cluster --region "$AWS_REGION"
 
       - name: Update kubeconfig
         run: |
-          aws eks update-kubeconfig \
-            --name ${{ inputs.cluster_name }} \
-            --region ${{ inputs.aws_region }}
+          set -euo pipefail
+          aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
       - name: Log in to GHCR
+        if: ${{ inputs.chart_source == 'oci' }}
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TOKEN="${GHCR_PAT:-$GITHUB_TOKEN}"
-          echo "$TOKEN" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          set -euo pipefail
+          TOKEN="${GHCR_PAT:-$GH_TOKEN}"
+          echo "$TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      - name: Resolve chart namespace
+      - name: Resolve chart reference
+        if: ${{ inputs.chart_source == 'oci' }}
         id: chart
         env:
           GHCR_NAMESPACE: ${{ secrets.GHCR_NAMESPACE }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          NS="${GHCR_NAMESPACE:-${{ github.repository }}}"
+          set -euo pipefail
+          NS="${GHCR_NAMESPACE:-$GITHUB_REPOSITORY}"
           NS=$(echo "$NS" | tr '[:upper:]' '[:lower:]')
-          echo "version=${{ inputs.chart_version }}" >> "$GITHUB_OUTPUT"
-          echo "namespace=$NS" >> "$GITHUB_OUTPUT"
+          echo "ref=oci://ghcr.io/${NS}/unguard" >> "$GITHUB_OUTPUT"
 
       - name: Install AWS Load Balancer Controller
+        if: ${{ inputs.service_type == 'LoadBalancer' }}
+        env:
+          ACCOUNT_ID: ${{ steps.aws.outputs.account_id }}
+          VPC_ID: ${{ steps.aws.outputs.vpc_id }}
         run: |
+          set -euo pipefail
           helm repo add eks https://aws.github.io/eks-charts
           helm repo update
           helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
             --namespace kube-system \
-            --set clusterName=${{ inputs.cluster_name }} \
+            --set "clusterName=$CLUSTER_NAME" \
             --set serviceAccount.create=true \
             --set serviceAccount.name=aws-load-balancer-controller \
-            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::016886142452:role/AmazonEKSLoadBalancerControllerRole \
+            --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::${ACCOUNT_ID}:role/${LB_CONTROLLER_ROLE_NAME}" \
             --set replicaCount=1 \
-            --set vpcId=vpc-0ad0ebeebac2fa73f \
+            --set "vpcId=$VPC_ID" \
             --wait --timeout 5m || {
               echo "=== LB Controller pod status ==="
               kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller -o wide
@@ -105,66 +205,102 @@ jobs:
 
       - name: Install MariaDB (prerequisite)
         run: |
+          set -euo pipefail
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo update
-          # Reuse existing password if secret exists
-          EXTRA_ARGS=""
-          if kubectl get secret unguard-mariadb -n ${{ inputs.k8s_namespace }} &>/dev/null; then
-            EXISTING_PW=$(kubectl get secret unguard-mariadb -n ${{ inputs.k8s_namespace }} \
+          # Reuse the existing root password so the app's stored credentials stay valid.
+          helm_args=(
+            --version 11.5.7
+            --namespace "$K8S_NAMESPACE"
+            --create-namespace
+            --set primary.persistence.enabled=false
+            --set image.repository=bitnamilegacy/mariadb
+            --wait --timeout 5m
+          )
+          if kubectl get secret unguard-mariadb -n "$K8S_NAMESPACE" &>/dev/null; then
+            EXISTING_PW=$(kubectl get secret unguard-mariadb -n "$K8S_NAMESPACE" \
               -o jsonpath="{.data.mariadb-root-password}" | base64 -d)
-            EXTRA_ARGS="--set auth.rootPassword=${EXISTING_PW}"
+            if [ -n "$EXISTING_PW" ]; then
+              # --set-string, so a numeric-looking password is not coerced to a number.
+              helm_args+=(--set-string "auth.rootPassword=$EXISTING_PW")
+            fi
           fi
-          # Delete the StatefulSet if it exists so Helm can recreate with updated spec
-          kubectl delete statefulset unguard-mariadb -n ${{ inputs.k8s_namespace }} --ignore-not-found
-          helm upgrade --install unguard-mariadb bitnami/mariadb \
-            --namespace ${{ inputs.k8s_namespace }} \
-            --create-namespace \
-            --set primary.persistence.enabled=false \
-            --wait --timeout 5m \
-            $EXTRA_ARGS
+          # Persistence is off, so the DB is ephemeral anyway; dropping the StatefulSet
+          # lets Helm recreate it when the pod spec changes (its fields are immutable).
+          kubectl delete statefulset unguard-mariadb -n "$K8S_NAMESPACE" --ignore-not-found
+          helm upgrade --install unguard-mariadb bitnami/mariadb "${helm_args[@]}"
+
+      - name: Apply image tag override
+        if: ${{ inputs.chart_source == 'local' && inputs.image_tag != '' }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --user --quiet 'ruamel.yaml==0.18.6'
+          python3 ops/eks/set-image-tag.py chart/values.yaml "$IMAGE_TAG"
 
       - name: Deploy with Helm
+        env:
+          CHART_REF: ${{ steps.chart.outputs.ref }}
         run: |
-          helm upgrade --install unguard \
-            "oci://ghcr.io/${{ steps.chart.outputs.namespace }}/unguard" \
-            --version "${{ steps.chart.outputs.version }}" \
-            --namespace ${{ inputs.k8s_namespace }} \
-            --create-namespace \
-            --set localDev.enabled=false \
-            --set envoyProxy.service.type=LoadBalancer \
-            --force-conflicts \
+          set -euo pipefail
+          helm_args=(
+            --namespace "$K8S_NAMESPACE"
+            --create-namespace
+            --set localDev.enabled=false
+            --set "envoyProxy.service.type=$SERVICE_TYPE"
+            --force-conflicts
             --wait --timeout 10m
-
-      - name: Annotate service for NLB
-        run: |
-          kubectl annotate svc unguard-envoy-proxy -n ${{ inputs.k8s_namespace }} --overwrite \
-            service.beta.kubernetes.io/aws-load-balancer-type=external \
-            service.beta.kubernetes.io/aws-load-balancer-nlb-target-type=instance \
-            service.beta.kubernetes.io/aws-load-balancer-scheme=internet-facing
+          )
+          if [ "$CHART_SOURCE" = "local" ]; then
+            CHART_TARGET="./chart"
+          else
+            CHART_TARGET="$CHART_REF"
+            helm_args+=(--version "$CHART_VERSION")
+          fi
+          if [ "$SERVICE_TYPE" = "LoadBalancer" ]; then
+            # Set at create time so the AWS CCM never provisions a classic ELB first.
+            helm_args+=(
+              --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-type=external"
+              --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type=instance"
+              --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-scheme=${{ vars.LB_SCHEME || 'internet-facing' }}"
+            )
+          fi
+          if [ "$ENABLE_APPSEC_DEMOS" = "true" ]; then
+            helm_args+=(
+              --set detectionStream.enabled=true
+              --set incidentInjector.enabled=true
+              --set kspmMisconfig.enabled=true
+            )
+          fi
+          if [ "$ENABLE_AI_SERVICES" != "true" ]; then
+            helm_args+=(--set ollama.enabled=false --set ragService.enabled=false)
+          fi
+          helm upgrade --install unguard "$CHART_TARGET" "${helm_args[@]}"
 
       - name: Print app URL
+        if: ${{ inputs.service_type == 'LoadBalancer' }}
         run: |
+          set -euo pipefail
           echo "Waiting for LoadBalancer hostname..."
           for i in $(seq 1 18); do
-            HOSTNAME=$(kubectl get svc unguard-envoy-proxy -n ${{ inputs.k8s_namespace }} \
-              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+            HOSTNAME=$(kubectl get svc unguard-envoy-proxy -n "$K8S_NAMESPACE" \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
             if [ -n "$HOSTNAME" ]; then
               echo "App URL: http://$HOSTNAME"
+              echo "### App URL: http://$HOSTNAME" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             echo "  waiting... ($i/18)"
             sleep 10
           done
-          echo "LoadBalancer hostname not yet assigned (ELB may still be provisioning)"
+          echo "::error::LoadBalancer hostname was not assigned within 3 minutes."
+          kubectl describe svc unguard-envoy-proxy -n "$K8S_NAMESPACE" || true
+          exit 1
 
       - name: Show pod status
         if: always()
         run: |
           echo "=== Pods ==="
-          kubectl get pods -n ${{ inputs.k8s_namespace }} -o wide
+          kubectl get pods -n "$K8S_NAMESPACE" -o wide || true
           echo ""
-          echo "=== Not-ready pods (excluding cronjobs) ==="
-          kubectl get pods -n ${{ inputs.k8s_namespace }} -o json | \
-            jq -r '.items[] | select(.status.phase != "Running" and (.metadata.ownerReferences[]?.kind != "Job")) | .metadata.name' 2>/dev/null | \
-            xargs -r -I{} kubectl describe pod {} -n ${{ inputs.k8s_namespace }} | \
-            grep -A 10 "Events:\|Reason:\|Message:" || true
+          echo "=== Recent namespace events ==="
+          kubectl get events -n "$K8S_NAMESPACE" --sort-by=.lastTimestamp --field-selector type!=Normal | tail -30 || true

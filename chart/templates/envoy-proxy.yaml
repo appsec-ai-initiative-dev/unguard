@@ -22,6 +22,10 @@ metadata:
     app.kubernetes.io/name: {{ .Values.envoyProxy.name }}
     app.kubernetes.io/part-of: unguard
 {{ include "renderLabels" .Values.labels.common | indent 4 }}
+  {{- with .Values.envoyProxy.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   {{ if .Values.aws.enabled }}
   type: NodePort

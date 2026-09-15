@@ -54,7 +54,7 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: {{ quote .Values.buildRunner.deployment.container.env.OTEL_RESOURCE_ATTRIBUTES }}
             - name: NODE_OPTIONS
-              value: "--require /opt/dynatrace/oneagent-paas/agent/bin/current/any/nodejs/nodejsagent.js --require /app/tracing.js"
+              value: "--require /opt/dynatrace/oneagent-paas/agent/bin/current/any/nodejs/nodejsagent.js{{ if .Values.tracing.enabled }} --require /app/tracing.js{{ end }}"
             - name: NPM_TOKEN
               value: {{ quote .Values.buildRunner.deployment.container.env.NPM_TOKEN }}
             - name: AWS_ACCESS_KEY_ID

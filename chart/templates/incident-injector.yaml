@@ -1,0 +1,146 @@
+{{- /*
+Copyright 2023 Dynatrace LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/}}
+{{ if .Values.incidentInjector.enabled }}
+# Incident Injector - fuel for the "problem <-> security association" use case.
+#
+# The association engine joins a Davis problem's affected entities x DETECTION_FINDINGs
+# on those entities within [problem.started-30m, problem.ended]. A steady detection
+# stream alone rarely raises Davis PROBLEMS, so that join usually finds nothing and the
+# agent trivially answers BENIGN. This workload deliberately manufactures BOTH halves:
+#
+#   * MALICIOUS incident: a sustained, high-rate burst of *broken-but-malicious* SQLi at
+#     one target service. The payloads keep injection patterns (UNION/OR/;--) so RAP
+#     still raises attack DETECTION_FINDINGs, but are syntactically broken so the service
+#     throws 5xx -> a Davis failure-rate problem on the SAME entity, in the SAME window
+#     as the detections. That is a true-positive the association agent should call
+#     SUSPICIOUS. The whole burst uses one fixed source IP so it reads as one campaign.
+#
+#   * BENIGN incident: an equally heavy burst of *legitimate* traffic (timeline reads) at
+#     a DIFFERENT service, with no attack payloads and no spoofed IP -> a load/latency
+#     problem with NO detection in-window. A true-negative the agent should call BENIGN.
+#
+# Alternating them gives the association queue both positives and negatives to
+# discriminate. NOTE: whether Davis raises a problem depends on the tenant's anomaly
+# detection - on a quiet demo tenant you may need to raise sensitivity or set a static
+# failure-rate/response-time threshold on the target services. Tune INCIDENT_* to taste.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unguard-{{ .Values.incidentInjector.name }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.incidentInjector.name }}
+    app.kubernetes.io/part-of: unguard
+{{ include "renderLabels" .Values.labels.common | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.incidentInjector.name }}
+      app.kubernetes.io/part-of: unguard
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Values.incidentInjector.name }}
+        app.kubernetes.io/part-of: unguard
+{{ include "renderLabels" .Values.labels.common | indent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 5
+      restartPolicy: Always
+      initContainers:
+        - name: wait-for-frontend
+          image: curlimages/curl
+          command: ["/bin/sh", "-c"]
+          args: ['while [ $(curl -ksw "%{http_code}" "http://unguard-frontend:80/ui/api/healthz" -o /dev/null) -ne 200 ]; do sleep 5; echo "health check failed. Waiting for the frontend..."; done']
+      containers:
+        - name: {{ .Values.incidentInjector.name }}
+          image: {{ .Values.incidentInjector.image.repository }}:{{ .Values.incidentInjector.image.tag }}
+          imagePullPolicy: {{ .Values.incidentInjector.image.pullPolicy }}
+          env:
+            - name: FRONTEND_ADDR
+              value: {{ quote .Values.incidentInjector.frontendAddr }}
+            - name: MAL_SRC_IP
+              value: {{ quote .Values.incidentInjector.maliciousSourceIp }}
+            - name: INCIDENT_RATE
+              value: {{ quote .Values.incidentInjector.rate }}
+            - name: INCIDENT_DURATION
+              value: {{ quote .Values.incidentInjector.durationSeconds }}
+            - name: INCIDENT_GAP
+              value: {{ quote .Values.incidentInjector.gapSeconds }}
+          resources:
+            requests:
+              cpu: {{ quote .Values.incidentInjector.resources.requests.cpu }}
+              memory: {{ quote .Values.incidentInjector.resources.requests.memory }}
+            limits:
+              cpu: {{ quote .Values.incidentInjector.resources.limits.cpu }}
+              memory: {{ quote .Values.incidentInjector.resources.limits.memory }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -u
+              JAR=/tmp/inc_cookies
+
+              login() {
+                _u="$1"
+                curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/auth/register" \
+                  -H 'Content-Type: application/json' -d "{\"username\":\"$_u\",\"password\":\"$_u\"}"
+                curl -s -c "$JAR" -o /dev/null -X POST "http://$FRONTEND_ADDR/api/auth/login" \
+                  -H 'Content-Type: application/json' -d "{\"username\":\"$_u\",\"password\":\"$_u\"}"
+                grep -q jwt "$JAR"
+              }
+
+              # One malicious request: broken-but-malicious SQLi -> RAP attack + a 5xx.
+              # Keeps injection patterns (UNION/OR/;--) so RAP flags it, but the syntax is
+              # broken so the H2 UPDATE throws and the service returns 5xx.
+              mal_once() {
+                curl -s -o /dev/null -X POST "http://$FRONTEND_ADDR/api/user/incident_actor/bio" \
+                  -H 'Content-Type: application/json' \
+                  -H "X-Forwarded-For: $MAL_SRC_IP" -H "X-Real-IP: $MAL_SRC_IP" -b "$JAR" \
+                  -d '{"bioText":"'"'"' UNION ALL SELECT WHERE OR 1=1 ;-- ","enableMarkdown":false}'
+              }
+
+              # One benign request: a legitimate global-timeline read (microblog-service,
+              # a different entity than the malicious burst). No payload, no spoofed IP.
+              ben_once() {
+                curl -s -o /dev/null "http://$FRONTEND_ADDR/api/posts" -b "$JAR"
+              }
+
+              # Fire $INCIDENT_RATE concurrent requests each second for $INCIDENT_DURATION.
+              burst() {
+                _fn="$1"; _label="$2"; _end=$(( $(date +%s) + INCIDENT_DURATION ))
+                echo "[$(date +%H:%M:%S)] >>> $_label burst: ${INCIDENT_RATE}/s for ${INCIDENT_DURATION}s"
+                while [ "$(date +%s)" -lt "$_end" ]; do
+                  _i=0
+                  while [ "$_i" -lt "$INCIDENT_RATE" ]; do "$_fn" & _i=$((_i+1)); done
+                  wait
+                  sleep 1
+                done
+                echo "[$(date +%H:%M:%S)] <<< $_label burst done"
+              }
+
+              login incident_actor || echo "warn: incident_actor login not confirmed; continuing"
+
+              echo "=== incident-injector started @ $(date) frontend=$FRONTEND_ADDR ==="
+              echo "    malicious src=$MAL_SRC_IP rate=${INCIDENT_RATE}/s dur=${INCIDENT_DURATION}s gap=${INCIDENT_GAP}s"
+
+              while true; do
+                burst mal_once "MALICIOUS (profile-service SQLi + 5xx)"
+                echo "[$(date +%H:%M:%S)] gap ${INCIDENT_GAP}s"; sleep "$INCIDENT_GAP"
+                burst ben_once "BENIGN (microblog timeline load, no attack)"
+                echo "[$(date +%H:%M:%S)] gap ${INCIDENT_GAP}s"; sleep "$INCIDENT_GAP"
+              done
+{{ end }}
