@@ -78,10 +78,10 @@ jobs:
           echo "chart_version OK: $CHART_VERSION"
 
       - name: Configure AWS credentials
-        # Pinned to an immutable SHA rather than the mutable v4 tag: whoever
+        # Pinned to an immutable SHA rather than a mutable version tag: whoever
         # controls the action could otherwise repoint the tag, and this step
         # runs with an OIDC token in scope.
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ inputs.role_arn }}
@@ -95,7 +95,7 @@ jobs:
             --region "$AWS_REGION"
 
       - name: Set up Helm
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
       - name: Log in to GHCR
         # The unguard chart package is public, so the deploy below succeeds
