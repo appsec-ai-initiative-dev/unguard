@@ -15,6 +15,10 @@ on:
         description: 'AWS region'
         required: false
         default: 'us-east-1'
+      k8s_namespace:
+        description: 'Kubernetes namespace to deploy into'
+        required: false
+        default: 'unguard'
 
 permissions:
   id-token: write
@@ -105,15 +109,15 @@ jobs:
           helm repo update
           # Reuse existing password if secret exists
           EXTRA_ARGS=""
-          if kubectl get secret unguard-mariadb -n unguard &>/dev/null; then
-            EXISTING_PW=$(kubectl get secret unguard-mariadb -n unguard \
+          if kubectl get secret unguard-mariadb -n ${{ inputs.k8s_namespace }} &>/dev/null; then
+            EXISTING_PW=$(kubectl get secret unguard-mariadb -n ${{ inputs.k8s_namespace }} \
               -o jsonpath="{.data.mariadb-root-password}" | base64 -d)
             EXTRA_ARGS="--set auth.rootPassword=${EXISTING_PW}"
           fi
           # Delete the StatefulSet if it exists so Helm can recreate with updated spec
-          kubectl delete statefulset unguard-mariadb -n unguard --ignore-not-found
+          kubectl delete statefulset unguard-mariadb -n ${{ inputs.k8s_namespace }} --ignore-not-found
           helm upgrade --install unguard-mariadb bitnami/mariadb \
-            --namespace unguard \
+            --namespace ${{ inputs.k8s_namespace }} \
             --create-namespace \
             --set primary.persistence.enabled=false \
             --wait --timeout 5m \
@@ -124,7 +128,7 @@ jobs:
           helm upgrade --install unguard \
             "oci://ghcr.io/${{ steps.chart.outputs.namespace }}/unguard" \
             --version "${{ steps.chart.outputs.version }}" \
-            --namespace unguard \
+            --namespace ${{ inputs.k8s_namespace }} \
             --create-namespace \
             --set localDev.enabled=false \
             --set envoyProxy.service.type=LoadBalancer \
@@ -133,7 +137,7 @@ jobs:
 
       - name: Annotate service for NLB
         run: |
-          kubectl annotate svc unguard-envoy-proxy -n unguard --overwrite \
+          kubectl annotate svc unguard-envoy-proxy -n ${{ inputs.k8s_namespace }} --overwrite \
             service.beta.kubernetes.io/aws-load-balancer-type=external \
             service.beta.kubernetes.io/aws-load-balancer-nlb-target-type=instance \
             service.beta.kubernetes.io/aws-load-balancer-scheme=internet-facing
@@ -142,7 +146,7 @@ jobs:
         run: |
           echo "Waiting for LoadBalancer hostname..."
           for i in $(seq 1 18); do
-            HOSTNAME=$(kubectl get svc unguard-envoy-proxy -n unguard \
+            HOSTNAME=$(kubectl get svc unguard-envoy-proxy -n ${{ inputs.k8s_namespace }} \
               -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
             if [ -n "$HOSTNAME" ]; then
               echo "App URL: http://$HOSTNAME"
@@ -157,10 +161,10 @@ jobs:
         if: always()
         run: |
           echo "=== Pods ==="
-          kubectl get pods -n unguard -o wide
+          kubectl get pods -n ${{ inputs.k8s_namespace }} -o wide
           echo ""
           echo "=== Not-ready pods (excluding cronjobs) ==="
-          kubectl get pods -n unguard -o json | \
+          kubectl get pods -n ${{ inputs.k8s_namespace }} -o json | \
             jq -r '.items[] | select(.status.phase != "Running" and (.metadata.ownerReferences[]?.kind != "Job")) | .metadata.name' 2>/dev/null | \
-            xargs -r -I{} kubectl describe pod {} -n unguard | \
+            xargs -r -I{} kubectl describe pod {} -n ${{ inputs.k8s_namespace }} | \
             grep -A 10 "Events:\|Reason:\|Message:" || true
