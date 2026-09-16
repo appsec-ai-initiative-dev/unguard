@@ -143,8 +143,9 @@ jobs:
           # MariaDB is a one-time prerequisite installed outside the chart, not
           # part of the app deploy. Reinstalling it on every run cost 58-320s of
           # a ~130s job, and timed the whole deploy out in run 34979231548. The
-          # StatefulSet delete below also drops the demo database, since
-          # persistence is disabled. Skip it when MariaDB is already serving.
+          # StatefulSet delete below (redeploy_mariadb=true only) also drops the
+          # demo database, since persistence is disabled. Skip the install when
+          # MariaDB is already serving.
           #
           # Safe to skip: nothing needs a fresh database. user-auth-service and
           # membership-service create their schema with CREATE TABLE IF NOT
@@ -190,8 +191,13 @@ jobs:
               helm_args+=(--set-string "auth.rootPassword=$EXISTING_PW")
             fi
           fi
-          # Delete the StatefulSet if it exists so Helm can recreate with updated spec
-          kubectl delete statefulset unguard-mariadb -n "$K8S_NAMESPACE" --ignore-not-found
+          # Persistence is off, so deleting the StatefulSet drops the database. Only do it
+          # when explicitly asked: a StatefulSet that merely isn't ready (e.g. a stuck
+          # volume mount) still holds the data. If Helm then hits an immutable-field
+          # change, it fails loudly and redeploy_mariadb=true is the explicit way out.
+          if [ "$REDEPLOY_MARIADB" = "true" ]; then
+            kubectl delete statefulset unguard-mariadb -n "$K8S_NAMESPACE" --ignore-not-found
+          fi
           helm upgrade --install unguard-mariadb bitnami/mariadb "${helm_args[@]}"
           echo "reinstalled=true" >> "$GITHUB_OUTPUT"
 
