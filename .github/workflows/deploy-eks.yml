@@ -82,12 +82,16 @@ jobs:
       ENABLE_AI_SERVICES: ${{ inputs.enable_ai_services }}
     steps:
       - name: Validate inputs
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          # Only its presence is checked; never echo it.
+          DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
-          [ -n "$CLUSTER_NAME" ] || fail "No cluster: pass cluster_name or set the EKS_CLUSTER_NAME variable on environment '${{ inputs.environment }}'."
-          [ -n "$AWS_REGION" ] || fail "No region: pass aws_region or set the AWS_REGION variable on environment '${{ inputs.environment }}'."
-          [ -n "${{ secrets.AWS_DEPLOY_ROLE_ARN }}" ] || fail "Environment '${{ inputs.environment }}' has no AWS_DEPLOY_ROLE_ARN secret. Deploy ops/eks/github-deploy-role.cfn.yaml in the target account first."
+          [ -n "$CLUSTER_NAME" ] || fail "No cluster: pass cluster_name or set the EKS_CLUSTER_NAME variable on environment '$TARGET_ENVIRONMENT'."
+          [ -n "$AWS_REGION" ] || fail "No region: pass aws_region or set the AWS_REGION variable on environment '$TARGET_ENVIRONMENT'."
+          [ -n "$DEPLOY_ROLE_ARN" ] || fail "Environment '$TARGET_ENVIRONMENT' has no AWS_DEPLOY_ROLE_ARN secret. Deploy ops/eks/github-deploy-role.cfn.yaml in the target account first."
           case "$CHART_SOURCE" in local|oci) ;; *) fail "chart_source must be 'local' or 'oci', got '$CHART_SOURCE'." ;; esac
           case "$SERVICE_TYPE" in ClusterIP|LoadBalancer) ;; *) fail "service_type must be 'ClusterIP' or 'LoadBalancer', got '$SERVICE_TYPE'." ;; esac
           # image_tag rewrites ./chart in place; an OCI chart has its tags already baked in.
@@ -97,10 +101,10 @@ jobs:
           echo "Deploying to cluster '$CLUSTER_NAME' in '$AWS_REGION' (namespace '$K8S_NAMESPACE')"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
@@ -148,17 +152,22 @@ jobs:
           aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          # Pinned: the default is "latest", so a new Helm release could change behavior
+          # between two runs of the same commit.
+          version: v4.3.0
 
       - name: Log in to GHCR
         if: ${{ inputs.chart_source == 'oci' }}
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
           TOKEN="${GHCR_PAT:-$GH_TOKEN}"
-          echo "$TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
 
       - name: Resolve chart reference
         if: ${{ inputs.chart_source == 'oci' }}
@@ -214,9 +223,13 @@ jobs:
               )
             fi
           fi
-          # Persistence is off, so the DB is ephemeral anyway; dropping the StatefulSet
-          # lets Helm recreate it when the pod spec changes (its fields are immutable).
-          kubectl delete statefulset unguard-mariadb -n "$K8S_NAMESPACE" --ignore-not-found
+          # Persistence is off, so deleting the StatefulSet drops the database. Only do it
+          # when explicitly asked: a StatefulSet that merely isn't ready (e.g. a stuck
+          # volume mount) still holds the data. If Helm then hits an immutable-field
+          # change, it fails loudly and redeploy_mariadb=true is the explicit way out.
+          if [ "$REDEPLOY_MARIADB" = "true" ]; then
+            kubectl delete statefulset unguard-mariadb -n "$K8S_NAMESPACE" --ignore-not-found
+          fi
           helm upgrade --install unguard-mariadb bitnami/mariadb "${helm_args[@]}"
 
       - name: Apply image tag override
@@ -229,6 +242,7 @@ jobs:
       - name: Deploy with Helm
         env:
           CHART_REF: ${{ steps.chart.outputs.ref }}
+          LB_SCHEME: ${{ vars.LB_SCHEME || 'internet-facing' }}
         run: |
           set -euo pipefail
           helm_args=(
@@ -249,7 +263,7 @@ jobs:
             helm_args+=(
               --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-type=external"
               --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type=instance"
-              --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-scheme=${{ vars.LB_SCHEME || 'internet-facing' }}"
+              --set "envoyProxy.service.annotations.service\.beta\.kubernetes\.io/aws-load-balancer-scheme=$LB_SCHEME"
             )
           fi
           if [ "$ENABLE_APPSEC_DEMOS" = "true" ]; then
@@ -268,13 +282,19 @@ jobs:
         if: ${{ inputs.service_type == 'LoadBalancer' }}
         run: |
           set -euo pipefail
+          # envoy-proxy listens on 8080, not 80, and the NLB only has 8080/8081 listeners,
+          # so the bare hostname is not a working URL. Read the port from the Service.
+          PORT=$(kubectl get svc unguard-envoy-proxy -n "$K8S_NAMESPACE" \
+            -o jsonpath='{.spec.ports[?(@.name=="http")].port}' 2>/dev/null || true)
+          PORT="${PORT:-8080}"
           echo "Waiting for LoadBalancer hostname..."
           for i in $(seq 1 18); do
             HOSTNAME=$(kubectl get svc unguard-envoy-proxy -n "$K8S_NAMESPACE" \
               -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
             if [ -n "$HOSTNAME" ]; then
-              echo "App URL: http://$HOSTNAME"
-              echo "### App URL: http://$HOSTNAME" >> "$GITHUB_STEP_SUMMARY"
+              URL="http://${HOSTNAME}:${PORT}"
+              echo "App URL: $URL"
+              echo "### App URL: $URL" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             echo "  waiting... ($i/18)"

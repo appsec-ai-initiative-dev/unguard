@@ -96,6 +96,9 @@ jobs:
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          # Pinned: the default is "latest". --force-conflicts below needs Helm 4.
+          version: v4.3.0
 
       - name: Log in to GHCR
         # The unguard chart package is public, so the deploy below succeeds
