@@ -182,6 +182,7 @@ jobs:
           echo "ref=oci://ghcr.io/${NS}/unguard" >> "$GITHUB_OUTPUT"
 
       - name: Install MariaDB (prerequisite)
+        id: mariadb
         env:
           REDEPLOY_MARIADB: ${{ inputs.redeploy_mariadb }}
         run: |
@@ -231,6 +232,7 @@ jobs:
             kubectl delete statefulset unguard-mariadb -n "$K8S_NAMESPACE" --ignore-not-found
           fi
           helm upgrade --install unguard-mariadb bitnami/mariadb "${helm_args[@]}"
+          echo "reinstalled=true" >> "$GITHUB_OUTPUT"
 
       - name: Apply image tag override
         if: ${{ inputs.chart_source == 'local' && inputs.image_tag != '' }}
@@ -277,6 +279,21 @@ jobs:
             helm_args+=(--set ollama.enabled=false --set ragService.enabled=false)
           fi
           helm upgrade --install unguard "$CHART_TARGET" "${helm_args[@]}"
+
+      - name: Restart services that create their schema at startup
+        # A MariaDB reinstall starts from an empty database, but these services only
+        # run their CREATE TABLE / migrations when their pod starts. Pods that were
+        # already running keep failing with "Table ... doesn't exist" until restarted.
+        if: ${{ steps.mariadb.outputs.reinstalled == 'true' }}
+        run: |
+          set -euo pipefail
+          for d in user-auth-service membership-service like-service; do
+            # Skip anything the chart did not deploy rather than failing on it.
+            if kubectl get deploy "unguard-$d" -n "$K8S_NAMESPACE" &>/dev/null; then
+              kubectl rollout restart "deploy/unguard-$d" -n "$K8S_NAMESPACE"
+              kubectl rollout status "deploy/unguard-$d" -n "$K8S_NAMESPACE" --timeout=5m
+            fi
+          done
 
       - name: Print app URL
         if: ${{ inputs.service_type == 'LoadBalancer' }}
