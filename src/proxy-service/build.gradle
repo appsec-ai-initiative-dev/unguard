@@ -13,6 +13,10 @@ repositories {
 	mavenCentral()
 }
 
+// Override snakeyaml version to fix CVE-2022-25857 (DoS via uncontrolled resource consumption)
+// Affects org.yaml:snakeyaml < 1.31; Spring Boot 2.2.2 BOM manages an older version
+ext['snakeyaml.version'] = '1.33'
+
 dependencies {
 	// https://mvnrepository.com/artifact/org.apache.httpcomponents/httpcore
 	// WARNING this is a version of httpcore that is vulnerable to CLRF injection in HTTP headers
