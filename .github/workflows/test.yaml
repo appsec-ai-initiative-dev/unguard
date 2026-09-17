@@ -53,6 +53,7 @@ jobs:
         uses: medyagh/setup-minikube@v0.0.14
         with:
           addons: ingress
+          container-runtime: docker
           start-args: --memory=6144 --cpus=4 --disk-size=20g
 
       - name: Cache Skaffold layers
