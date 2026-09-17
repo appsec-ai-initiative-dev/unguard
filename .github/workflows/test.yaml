@@ -46,13 +46,13 @@ jobs:
         uses: Azure/setup-kubectl@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.9'
           check-latest: true
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.6.1
+        uses: helm/chart-testing-action@e6669bcd63d7cb57cb4380c33043eebe5d111992 # v2.6.1
 
       - name: Run chart-testing (lint)
         run: ct lint --chart-dirs . --charts ./chart --validate-maintainers=false --check-version-increment=false --target-branch ${{ github.event.repository.default_branch }}
@@ -60,12 +60,12 @@ jobs:
       - name: Set up Minikube
         uses: medyagh/setup-minikube@v0.0.21
         with:
-          cache: false
+          minikube-version: 1.38.1
           addons: ingress
           start-args: --memory=6144 --cpus=4 --disk-size=20g
 
       - name: Cache Skaffold layers
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.skaffold/
           key: skaffold-${{ github.sha }}

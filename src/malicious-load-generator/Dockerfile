@@ -7,7 +7,8 @@ USER root
 # stays on old, vulnerable runtimes for security training.
 RUN printf 'deb https://snapshot.debian.org/archive/debian/20260831T000000Z bullseye main\ndeb https://snapshot.debian.org/archive/debian-security/20260831T000000Z bullseye-security main\n' > /etc/apt/sources.list \
     && apt-get -o Acquire::Check-Valid-Until=false update \
-    && apt-get install -y --no-install-recommends curl
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --chown=locust:locust . .
 RUN chmod +x loadgen.sh
