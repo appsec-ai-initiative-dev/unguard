@@ -56,16 +56,18 @@ jobs:
           start-args: --memory=6144 --cpus=4 --disk-size=20g
 
       - name: Cache Skaffold layers
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.skaffold/
-          key: fixed-${{ github.sha }}
+          key: skaffold-${{ github.sha }}
+          restore-keys: skaffold-
 
       - name: Install and Run Skaffold and Deploy to Minikube Cluster
         run: |
           curl -fsSL -o /usr/local/bin/skaffold https://storage.googleapis.com/skaffold/releases/v2.17.1/skaffold-linux-amd64
           chmod +x /usr/local/bin/skaffold
           skaffold version
+          eval $(minikube docker-env)
           skaffold run --skip-tests=true
 
       - name: Run chart-testing
