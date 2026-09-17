@@ -8,6 +8,8 @@ group = 'org.dynatrace'
 version = '0.0.1-SNAPSHOT'
 sourceCompatibility = "11"
 
+ext['snakeyaml.version'] = '2.0'
+
 repositories {
     mavenCentral()
 }
