@@ -52,8 +52,8 @@ jobs:
       - name: Set up Minikube
         uses: medyagh/setup-minikube@v0.0.14
         with:
+          minikube-version: 1.38.1
           addons: ingress
-          container-runtime: docker
           start-args: --memory=6144 --cpus=4 --disk-size=20g
 
       - name: Cache Skaffold layers
@@ -68,7 +68,6 @@ jobs:
           curl -fsSL -o /usr/local/bin/skaffold https://storage.googleapis.com/skaffold/releases/v2.17.1/skaffold-linux-amd64
           chmod +x /usr/local/bin/skaffold
           skaffold version
-          eval $(minikube docker-env)
           skaffold run --skip-tests=true
 
       - name: Run chart-testing
