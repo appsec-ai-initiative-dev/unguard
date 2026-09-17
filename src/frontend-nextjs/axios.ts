@@ -1,12 +1,28 @@
 import path from 'path';
 
 import axios from 'axios';
+import { headers } from 'next/headers';
 
-function createAxiosInstance(baseURL: string, headers: Object) {
-    return axios.create({
+function createAxiosInstance(baseURL: string, defaultHeaders: Object) {
+    const instance = axios.create({
         baseURL: baseURL,
-        headers: headers,
+        headers: defaultHeaders,
     });
+
+    instance.interceptors.request.use(async (config) => {
+        try {
+            const requestHeaders = await headers();
+            const clientIp = requestHeaders.get('x-client-ip');
+            if (clientIp) {
+                config.headers['x-client-ip'] = clientIp;
+            }
+        } catch {
+            // headers() is only available within a Next.js request context
+        }
+        return config;
+    });
+
+    return instance;
 }
 
 function requireEnv(name: string): string {
