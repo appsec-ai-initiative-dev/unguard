@@ -28,6 +28,10 @@ ingress:
 tracing:
   enabled: false
 
+dynatrace:
+  oneagentPaas:
+    enabled: false
+
 # Jaeger
 jaeger:
   name: jaeger

@@ -108,5 +108,14 @@ spec:
               value: {{ quote .Values.frontend.deployment.container.env.SAFE_TOKEN_API_KEY }}
             - name: SAFE_TOKEN_PIPELINE
               value: {{ quote .Values.frontend.deployment.container.env.SAFE_TOKEN_PIPELINE }}
+            {{- $nodeOptions := list }}
+            {{- if .Values.dynatrace.oneagentPaas.enabled }}
+            {{- $nodeOptions = append $nodeOptions "--require /opt/dynatrace/oneagent-paas/agent/bin/current/any/nodejs/nodejsagent.js" }}
+            {{- end }}
+            {{- if .Values.tracing.enabled }}
+            {{- $nodeOptions = append $nodeOptions "--require /app/tracing.js" }}
+            {{- end }}
+            {{- if $nodeOptions }}
             - name: NODE_OPTIONS
-              value: "--require /opt/dynatrace/oneagent-paas/agent/bin/current/any/nodejs/nodejsagent.js{{ if .Values.tracing.enabled }} --require /app/tracing.js{{ end }}"
+              value: {{ join " " $nodeOptions | quote }}
+            {{- end }}
