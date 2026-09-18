@@ -32,6 +32,10 @@ dependencies {
 	implementation group: 'io.opentracing.contrib', name: 'opentracing-spring-jaeger-web-starter', version: '3.2.2'
 
 
+	// https://mvnrepository.com/artifact/org.apache.hugegraph/hugegraph-api
+	// Upgraded to 1.3.0 to fix CVE-2024-27348: RCE via gremlin command execution (affected < 1.3.0)
+	implementation group: 'org.apache.hugegraph', name: 'hugegraph-api', version: '1.3.0'
+
 	// https://mvnrepository.com/artifact/commons-io/commons-io
 	implementation group: 'commons-io', name: 'commons-io', version: '2.8.0'
 
