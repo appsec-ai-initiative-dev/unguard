@@ -96,6 +96,9 @@ jobs:
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          # Pinned: the default is "latest". --force-conflicts below needs Helm 4.
+          version: v4.3.0
 
       - name: Log in to GHCR
         # The unguard chart package is public, so the deploy below succeeds
@@ -132,6 +135,7 @@ jobs:
           echo "namespace=$NS" >> "$GITHUB_OUTPUT"
 
       - name: Install MariaDB (prerequisite)
+        id: mariadb
         env:
           REDEPLOY_MARIADB: ${{ inputs.redeploy_mariadb }}
         run: |
@@ -139,8 +143,9 @@ jobs:
           # MariaDB is a one-time prerequisite installed outside the chart, not
           # part of the app deploy. Reinstalling it on every run cost 58-320s of
           # a ~130s job, and timed the whole deploy out in run 34979231548. The
-          # StatefulSet delete below also drops the demo database, since
-          # persistence is disabled. Skip it when MariaDB is already serving.
+          # StatefulSet delete below (redeploy_mariadb=true only) also drops the
+          # demo database, since persistence is disabled. Skip the install when
+          # MariaDB is already serving.
           #
           # Safe to skip: nothing needs a fresh database. user-auth-service and
           # membership-service create their schema with CREATE TABLE IF NOT
@@ -186,9 +191,15 @@ jobs:
               helm_args+=(--set-string "auth.rootPassword=$EXISTING_PW")
             fi
           fi
-          # Delete the StatefulSet if it exists so Helm can recreate with updated spec
-          kubectl delete statefulset unguard-mariadb -n "$K8S_NAMESPACE" --ignore-not-found
+          # Persistence is off, so deleting the StatefulSet drops the database. Only do it
+          # when explicitly asked: a StatefulSet that merely isn't ready (e.g. a stuck
+          # volume mount) still holds the data. If Helm then hits an immutable-field
+          # change, it fails loudly and redeploy_mariadb=true is the explicit way out.
+          if [ "$REDEPLOY_MARIADB" = "true" ]; then
+            kubectl delete statefulset unguard-mariadb -n "$K8S_NAMESPACE" --ignore-not-found
+          fi
           helm upgrade --install unguard-mariadb bitnami/mariadb "${helm_args[@]}"
+          echo "reinstalled=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy with Helm
         env:
@@ -237,6 +248,21 @@ jobs:
             "${OVERRIDES[@]}" \
             --force-conflicts \
             --wait --timeout 10m
+
+      - name: Restart services that create their schema at startup
+        # A MariaDB reinstall starts from an empty database, but these services only
+        # run their CREATE TABLE / migrations when their pod starts. Pods that were
+        # already running keep failing with "Table ... doesn't exist" until restarted.
+        if: ${{ steps.mariadb.outputs.reinstalled == 'true' }}
+        run: |
+          set -euo pipefail
+          for d in user-auth-service membership-service like-service; do
+            # Skip anything the chart did not deploy rather than failing on it.
+            if kubectl get deploy "unguard-$d" -n "$K8S_NAMESPACE" &>/dev/null; then
+              kubectl rollout restart "deploy/unguard-$d" -n "$K8S_NAMESPACE"
+              kubectl rollout status "deploy/unguard-$d" -n "$K8S_NAMESPACE" --timeout=5m
+            fi
+          done
 
       - name: Report deployed images
         env:
