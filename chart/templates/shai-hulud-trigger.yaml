@@ -76,7 +76,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: trigger
-              image: ghcr.io/puppeteer/puppeteer:24.11.0
+              image: ghcr.io/puppeteer/puppeteer:24.43.1
               imagePullPolicy: IfNotPresent
               command: ["node", "/scripts/trigger.js"]
               env:
