@@ -1353,9 +1353,9 @@ promise@^7.0.1:
     asap "~2.0.3"
 
 proxy-addr@~2.0.4:
-  version "2.0.6"
-  resolved "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.6.tgz"
-  integrity sha512-dh/frvCBVmSsDYzw6n926jv974gddhkFPfiN8hPOi30Wax25QZyZEGveluCgliBnqmuM+UJmBErbAUFIoDbjOw==
+  version "2.0.8"
+  resolved "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.8.tgz"
+  integrity sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==
   dependencies:
     forwarded "~0.1.2"
     ipaddr.js "1.9.1"
