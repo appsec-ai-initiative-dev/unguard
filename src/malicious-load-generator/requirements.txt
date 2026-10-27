@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=requirements.txt requirements.in
 #
-brotli==1.0.9
+brotli==1.2.1
     # via geventhttpclient
 certifi==2022.5.18.1
     # via
